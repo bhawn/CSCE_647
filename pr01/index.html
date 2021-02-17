@@ -1,0 +1,256 @@
+<html><head>
+    <meta charset="utf-8">
+    <title>PR01</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body id="preview">
+    
+    <!--------------------------- Start Title --------------------------------->
+    
+    <center>
+        <h3 class="code-line" data-line-end="2" data-line-start="1"><a id="Project_09_1"></a>Project 01</h3>
+        <h5 class="code-line" data-line-end="3" data-line-start="2"><a id="Ben_Hawn_2"></a>Ben Hawn</h5><br>
+	</center>
+	
+	<!---------------------------- Page Index --------------------------------->
+	
+	<center>
+
+    	<!-- Course host -->
+    	|&nbsp; 
+    	<a href="https://bhawn.github.io/CSCE_647">[Index]</a>&nbsp;|&nbsp;
+        [PR01]&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr02">[PR02]</a>&nbsp;|&nbsp; 
+    	<a href="https://bhawn.github.io/CSCE_647/pr03">[PR03]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr04">[PR04]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr05">[PR05]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr06">[PR06]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr07">[PR07]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr08">[PR08]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr09">[PR09]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr10">[PR10]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr11">[PR11]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr12">[PR12]</a>&nbsp;|
+    	
+    	
+	</center>
+	
+	
+	<!---------------------------- Web Demo Title ----------------------------->
+	
+    <hr width="100%">
+        <h3 align="center" style="padding-top:0">Web Demo</h3>
+    <hr width="100%"><br>
+	
+	
+    <!---------------------------- Start Pictures ----------------------------->
+    <!--------------------- Section Title --------------------->
+    <!------------------- Emscripten WebDemo loader --------------------------->
+    
+    <figure id="spinner" style="overflow:visible" hidden=""><div class="spinner"></div>
+        <center style="margin-top:.5em"><strong>
+            Project 01
+        </strong></center>
+    </figure>
+    <div class="emscripten" id="status"></div>
+    <div class="emscripten"><progress id="progress" max="1" value="0" hidden=""></progress></div>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1" width="900" height="600" style="cursor: default;"></canvas>
+    <div class="emscripten">
+
+        
+        <!---------------------- Emscripten Loader -------------------->
+        <!--
+            Calling stub because of sigaction is expected behavior. 
+            SDL_Init makes calls to sigaction. With ASSERTIONS=1 emscripten will 
+            warn because signal as not supported. 
+        -->
+        
+        <!--Not really needed but left.-->
+        <textarea class="emscripten" id="output" rows="0" style="display: none!important;"></textarea>
+        <script>
+            var statusElement = document.getElementById("status"),
+                progressElement = document.getElementById("progress"),
+                spinnerElement = document.getElementById("spinner"),
+                Module = {
+                    preRun: [],
+                    postRun: [],
+                    // No longer used. removed printbox
+                    
+                    print: function() {
+                        
+                        var e = document.getElementById("output");
+                        return e && (e.value = ""),
+                        function(t) { 
+                            arguments.length > 1 && (t = Array.prototype.slice.call(arguments).join(" ")), 
+                            console.log(t), 
+                            e && (e.value += t + "\n", e.scrollTop = e.scrollHeight) 
+                        }
+                    }(),
+                    printErr: function(e) { 
+                        arguments.length > 1 && (e = Array.prototype.slice.call(arguments).join(" ")), 
+                        console.error(e) 
+                    },
+                    canvas: function() { 
+                        var e = document.getElementById("canvas"); 
+                        return e.addEventListener("webglcontextlost", (function(e) { 
+                            alert("WebGL context lost. You will need to reload the page."), 
+                            e.preventDefault() 
+                        }), !1), 
+                        e 
+                    }(),
+                    setStatus: function(e) {
+                        if (Module.setStatus.last || (Module.setStatus.last = { time: Date.now(), text: "" }), e !== Module.setStatus.last.text) {
+                            var t = e.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/),
+                            n = Date.now();
+                            t && n - Module.setStatus.last.time < 30 || (Module.setStatus.last.time = n, Module.setStatus.last.text = e, t ? (e = t[1], progressElement.value = 100 * parseInt(t[2]), progressElement.max = 100 * parseInt(t[4]), progressElement.hidden = !1, spinnerElement.hidden = !1) : (progressElement.value = null, progressElement.max = null, progressElement.hidden = !0, e || (spinnerElement.hidden = !0)), statusElement.innerHTML = e)
+                        }
+                    },
+                    totalDependencies: 0,
+                    monitorRunDependencies: function(e) { 
+                        this.totalDependencies = Math.max(this.totalDependencies, e), 
+                        Module.setStatus(e ? "Preparing... (" + (this.totalDependencies - e) + "/" + this.totalDependencies + ")" : "All downloads complete.") 
+                    }
+                };
+                
+            Module.setStatus("Downloading..."), 
+            
+            window.onerror = function() { 
+                Module.setStatus("Exception thrown. Check JS Console.\nYou may need to reload the page."), 
+                spinnerElement.style.display = "none", 
+                Module.setStatus = function(e) { e && Module.printErr("[post-exception status] " + e) }
+            }
+        </script>
+        
+       <script async="" src="index.js"></script>
+        
+		
+    </div>
+    <ul>
+		<li>Specular Fix 2/16/21. If program crashes may need to clear your cache since update.</li>
+		<li><strike>Will try to update pics using different normal map from last semester later.</strike></li>
+		<li>Updated with new pics I made.</li>
+		<li>Doesnt seem to work on mobile.</li>
+
+
+		
+	</ul>
+    
+    <!---------------------------- Start Pictures ----------------------------->
+    <!--------------------- Section Title --------------------->
+    
+    <br><hr>
+    <h5 align="center" style="padding-bottom:1rem">Pictures</h5>
+    <hr><br>
+
+	
+	<center>
+	<table>
+            <tbody>
+				<tr align="center">
+                    <td></td>
+                    <td><img alt="diffuse.png" src="diffuse_vg.png" height="300px"></td>
+                    <td><img alt="2ColorSpec.png" src="specular_vg_text.png" height="300px"></td>
+
+                    <td></td>
+                </tr>
+                <tr align="center">
+                    <td>
+                        
+                    </td>
+                    <td>
+                        <p>Diffuse</p>
+                    </td>
+                    <td>
+                        <p>Specular</p>
+                    </td>
+					<td>
+                    </td>
+
+                </tr>
+			
+                
+			</tbody>
+		</table>
+		<p>New Pics I made</p>
+		<table>
+            <tbody>
+				<tr align="center">
+                    <td><img alt="normal2.png" src="van_gogh_map.png" height="300px"></td>
+                    <td><img alt="light1.png" src="van_gogh_light.png" height="300px"></td>
+                    <td><img alt="dark1.png" src="van_gogh_dark.png" height="300px"></td>
+                    <td><img alt="spec1.png" src="van_gogh_specular.png" height="300px"></td>
+                </tr>
+                <tr align="center">
+                    <td>
+                        <p>Painted Normal Map</p>
+                    </td>
+                    <td>
+                        <p>Light</p>
+                    </td>
+                    <td>
+                        <p>Dark</p>
+                    </td>
+                    <td>
+                        <p>Specular</p>
+                    </td>
+                </tr>
+				</tbody>
+		</table>
+		<p>Old Pics</p>
+		<table>
+            <tbody>
+				<tr align="center">
+                    <td><img alt="two_color_diffuse.png" src="two_color_diffuse.png" height="300px"></td>
+                    <td><img alt="diffuse.png" src="diffuse.png" height="300px"></td>
+                    <td><img alt="2ColorSpec.png" src="2ColorSpec.png" height="300px"></td>
+
+                    <td><img alt="spec.png" src="spec.png" height="300px"></td>
+                </tr>
+                <tr align="center">
+                    <td>
+                        <p>Two Color Diffuse</p>
+                    </td>
+                    <td>
+                        <p>Diffuse</p>
+                    </td>
+                    <td>
+                        <p>Two Color Specular</p>
+                    </td>
+					<td>
+                        <p>Specular in Region</p>
+                    </td>
+
+                </tr>
+			
+			
+                <tr align="center">
+                    <td><img alt="normal2.png" src="normal2.png" height="300px"></td>
+                    <td><img alt="light1.png" src="light1.png" height="300px"></td>
+                    <td><img alt="dark1.png" src="dark1.png" height="300px"></td>
+                    <td><img alt="spec1.png" src="spec1.png" height="300px"></td>
+                </tr>
+                <tr align="center">
+                    <td>
+                        <p>Normal Map</p>
+                    </td>
+                    <td>
+                        <p>Light</p>
+                    </td>
+                    <td>
+                        <p>Dark</p>
+                    </td>
+                    <td>
+                        <p>Specular</p>
+                    </td>
+                </tr>
+        </tbody>
+</table>
+	</center>
+    <hr width="100%"><br>
+    <hr width="100%">
+    
+    
+
+
+</body></html>
