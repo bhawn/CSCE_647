@@ -1,0 +1,2307 @@
+[Window][#MainWindow]
+Pos=0,0
+Size=900,600
+Collapsed=0
+
+[Window][Image 1]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,0
+
+[Window][Image 2]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,1
+
+[Window][Image 3]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,2
+
+[Window][Debug##Default]
+Pos=60,60
+Size=400,400
+Collapsed=0
+
+[Window][Window]
+Pos=600,0
+Size=300,348
+Collapsed=0
+DockId=0x00000005,0
+
+[Window][Text Editor]
+Pos=285,0
+Size=313,600
+Collapsed=0
+DockId=0x00000004,0
+
+[Window][Frag]
+Pos=0,369
+Size=598,231
+Collapsed=0
+DockId=0xADC20544,1
+
+[Window][Vert]
+Pos=0,369
+Size=598,231
+Collapsed=0
+DockId=0xADC20544,0
+
+[Window][Active Image]
+Pos=600,350
+Size=300,250
+Collapsed=0
+DockId=0x00000006,0
+
+[Window][###Log]
+Pos=0,383
+Size=283,217
+Collapsed=0
+DockId=0x0000000B,0
+
+[Window][Image 4]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,3
+
+[Window][Image 5]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,4
+
+[Window][Image 6]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,5
+
+[Window][Image 7]
+Pos=0,0
+Size=283,381
+Collapsed=0
+DockId=0x00000009,6
+
+[Window][Node Edit(WIP)]
+Pos=285,19
+Size=313,581
+Collapsed=0
+DockId=0xADC20544,0
+
+[Window][pr03.glsl]
+Pos=160,369
+Size=438,231
+Collapsed=0
+DockId=0xADC20544,1
+
+[Docking][Data]
+DockSpace       ID=0xADC20544 Window=0x426D426A Pos=285,19 Size=313,581 CentralNode=1 Selected=0x59803441
+DockSpace       ID=0xE2AFC8E9 Window=0x7D0290AD Pos=0,0 Size=900,600 Split=X Selected=0x70704F44
+  DockNode      ID=0x00000001 Parent=0xE2AFC8E9 SizeRef=598,600 Split=X Selected=0x70704F44
+    DockNode    ID=0x00000002 Parent=0x00000001 SizeRef=283,600 Split=Y Selected=0x70704F44
+      DockNode  ID=0x00000009 Parent=0x00000002 SizeRef=299,381 CentralNode=1 Selected=0x70704F44
+      DockNode  ID=0x0000000B Parent=0x00000002 SizeRef=299,217 Selected=0x4C2F7408
+    DockNode    ID=0x00000004 Parent=0x00000001 SizeRef=313,600 HiddenTabBar=1 Selected=0x426D426A
+  DockNode      ID=0x00000003 Parent=0xE2AFC8E9 SizeRef=300,600 Split=Y Selected=0x8C48FCEB
+    DockNode    ID=0x00000005 Parent=0x00000003 SizeRef=300,348 HiddenTabBar=1 Selected=0x8C48FCEB
+    DockNode    ID=0x00000006 Parent=0x00000003 SizeRef=300,250 Selected=0x6084FDF1
+
+#ifdef _FRAGMENT_
+/******************************************************************************/
+#define DataImage 1
+#define eta_coeff vec2(1.31f, 1.40003f)
+#define ENV_ILLUM_RAYS 100
+//------------------------------------------------
+#define MESH_COUNT 0
+#define SPHERE_COUNT 3
+#define PLANE_COUNT 1
+#define QUAD_COUNT 0
+//------------------------------------------------
+#define SHADOW
+// #define ENV_ILLUM
+#define DIFFUSE
+// #define SPECULAR
+#define ANTIALIAS
+//-------------- Map Mesh Images -----------------
+#define N_IMG 2
+#define DIF_IMG 1
+#define SPEC_IMG 3
+
+
+/******************************************************************************/
+layout(location = 0) out vec4   FragColor;
+uniform sampler2D               Image[7];
+uniform vec2                    ImageSize[7];
+uniform float                   time;
+uniform mat4                    camera;
+uniform int                     index_count;
+uniform int                     vertex_count;           // not number of vertices but number of vertices * 3
+uniform int                     txtr_vert_count;
+uniform int                     normal_count;
+uniform float                   frame;
+
+/******************************************************************************/
+struct Object {
+    vec3 color, N, uv, ph;
+    int type, i, txtr_id;
+    bool is_fresnel, hollow;
+};
+struct Triangle {
+    mat3 V;
+    vec3 N, uv;
+    bool is_fresnel;
+};
+struct Sphere {
+	vec3 pc;
+	float r;
+	vec3 color;
+	int txtr_id;
+	bool is_fresnel, hollow;
+};
+struct Plane { 
+    vec3 pc, N, color; 
+    bool is_fresnel;
+    int txtr_id;
+};
+struct Quadratic {
+    vec3 ai2;
+    float a21, a00;
+    vec3 s;
+    mat3 n;
+    vec3 pc, color;
+    bool is_fresnel;
+};
+struct Mesh {
+    vec3 color;
+    bool is_fresnel;
+    int txtr_id;
+};
+/******************************************************************************/
+
+#if PLANE_COUNT != 0
+    Sphere spheres[SPHERE_COUNT];
+#endif
+#if PLANE_COUNT != 0
+    Plane planes[PLANE_COUNT]; 
+#endif
+#if QUAD_COUNT != 0
+    Quadratic quads[QUAD_COUNT];
+#endif
+#if MESH_COUNT != 0
+    Mesh mesh;
+#endif
+    
+vec3 light;
+vec2 resolution;
+mat3 norm_view;
+
+/******************************************************************************/
+
+// Found these random functions only not mine.
+uvec3 pcg3d(uvec3 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    return v;
+}
+vec3 random3(vec3 f) {
+    return uintBitsToFloat((pcg3d(floatBitsToUint(f)) & 0x007FFFFFu) | 0x3F800000u) - 1.0;
+}
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+// Incomplete
+vec3 paraHem(vec3 n, vec3 ld, float i, vec2 MN, vec2 mn) {
+    // needs to be fixed
+    vec3 r = vec3(0);
+    ld =   vec3(0.0, 0.0, -1.0);
+    vec3 v_up =     random3(vec3(i));
+    vec3 n0 =       normalize(cross(ld, v_up));
+    vec3 n1 =       normalize(cross(n0, n));
+    float PI = 3.14159;
+    vec3 ndh = cos((mn.x+r[1])*PI/(2.0*MN.x)) * n + 
+         sin(((mn.x+r[1])*PI)/(2.0*MN.x)) *
+         cos((2.0*(mn.y+r[0])*PI)/MN.y)*n1 +
+         sin((mn.x+r[1])*PI/(2.0*MN.x))*sin((2.0*(mn.y+r[0])*PI)/MN.y)*n0;
+    return ndh;
+}
+
+/******************************************************************************/
+vec3 rotateX(vec3 r, float angle_rad) {
+    return vec3(
+        r.x,
+        cos(angle_rad)*r.y - sin(angle_rad)*r.z,
+        cos(angle_rad)*r.z + sin(angle_rad)*r.y
+    );
+}
+vec3 rotateY(vec3 r, float angle_rad) {
+    return vec3(
+        cos(angle_rad)*r.x + sin(angle_rad)*r.z,
+        r.y,
+        cos(angle_rad)*r.z - sin(angle_rad)*r.x
+    );
+}
+/******************************************************************************/
+
+vec3 texture_uv(int i, vec2 uv) {
+    // glsl es workaround for sampler array access;
+    if(i == 1)      return texture(Image[1], uv).rgb;
+    else if(i == 2) return texture(Image[2], uv).rgb;
+    else if(i == 3) return texture(Image[3], uv).rgb;
+    else if(i == 4) return texture(Image[4], uv).rgb;
+    else if(i == 5) return texture(Image[5], uv).rgb;
+    else if(i == 6) return texture(Image[6], uv).rgb;
+    return texture(Image[1], uv).rgb;
+}
+
+vec3 texture_texel(int i, ivec2 uv) {
+    // glsl es workaround for sampler array access;
+    if(i == 1)      return texelFetch(Image[1], uv, 0).rgb;
+    else if(i == 2) return texelFetch(Image[2], uv, 0).rgb;
+    else if(i == 3) return texelFetch(Image[3], uv, 0).rgb;
+    else if(i == 4) return texelFetch(Image[4], uv, 0).rgb;
+    else if(i == 5) return texelFetch(Image[5], uv, 0).rgb;
+    else if(i == 6) return texelFetch(Image[6], uv, 0).rgb;
+    return texelFetch(Image[1], uv, 0).rgb;
+}
+
+vec3 bilerp(int ii, ivec2 ij, vec2 uv) {
+    // int i = int(u);
+    // int j = int(v);
+    float t = uv.x;
+    float s = uv.y;
+    return  texture_texel(ii, ij) * ((1.0-s)*(1.0-t)) +
+            texture_texel(ii, ivec2(ij.x, ij.y+1)) * (s*(1.0-t)) +
+            texture_texel(ii, ivec2(ij.x+1, ij.y)) * (t*(1.0-s)) +
+            texture_texel(ii, ivec2(ij.x+1, ij.y+1)) * (s*t);
+}
+
+vec3 texture_lookup_wrap(int i, vec2 uv) {
+    vec2 wh = ImageSize[i];
+    vec2 ij = vec2(round(uv * vec2(wh) - 0.5));
+    // return bilerp(i, ivec2(ij), ij/resolution); // another option
+    ij = vec2(max(0.0, min(ij.x, wh.x-1.0)), max(0.0, min(ij.y, wh.y-1.0)) );
+    return texture_texel(i, ivec2(ij));
+}
+
+vec3 computeTexDir(vec3 normal, vec3 n0, vec3 n1) {
+    vec3 a = cross(normal, n0);
+    vec3 b = cross(normal, n1);
+    vec3 max_ab = dot(a,a) < dot(b,b) ? b : a;
+    vec3 c = cross(normal, vec3(0,0,1));
+    return normalize(dot(max_ab, max_ab) < dot(c,c) ? c : max_ab);
+}
+
+vec3 map_sphere(vec3 N, int i) {
+    vec3 v_up =                 vec3(0, 1, 0);
+    vec3 v_l =                  vec3(1, 0, 0);
+    float num =                 acos(dot(v_up, N));
+    float v =                   1.0-num/3.14159;        // 1.0- temp fix
+    float u =                   (acos( dot(N, v_l) / sin(num))) / (2.0 * 3.14159);
+    if(dot(cross(v_up, v_l), N) <= 0.0) u = 1.0-u;
+    return texture_lookup_wrap(i, vec2(u, v));
+}
+vec3 map_plane(vec3 pc, vec3 N, vec3 ph, int i) {
+    vec3 n0 =           vec3(1, 0, 0);
+    vec3 n1 =           vec3(0, -1, 0);
+    n1 =                computeTexDir(N, n0, n1);
+    vec2 rwh =          ImageSize[i];
+    float img_size =    10.0;
+    float u =           dot(n0, (ph - pc) / img_size);
+    float v =           1.0 - dot(n1, (ph - pc) / (img_size*(rwh.x/rwh.y)));  // extra step. probably need to correct using computeTexDir
+    u =                 u - floor(u);                                          
+    v =                 v - floor(v);
+    if(u < 0.0)         u = 1.0 - u;
+    if(v < 0.0)         v = 1.0 - v;
+    return texture_lookup_wrap(i, vec2(u, v));
+}
+
+bool TriangleIntersect(vec3, vec3, inout float, inout Triangle);
+int  getMeshIndex(int index, int row, int num_verts) {
+    int pixel_pos = index/3 + num_verts;
+    int pos_in_pixel = index % 3;
+    return int(texelFetch(Image[DataImage], ivec2(pixel_pos, row), 0)[pos_in_pixel]);
+}
+vec3 getMeshCoord(int i, int row) {
+    return texelFetch(Image[DataImage], ivec2(i, row), 0).rgb;
+}
+vec2 map_mesh(vec3 coords, int i) {
+    int num_verts = txtr_vert_count/2;
+    mat3 txtrCoord;
+    txtrCoord[0] = getMeshCoord(getMeshIndex(i*3, 1, num_verts), 1);
+    txtrCoord[1] = getMeshCoord(getMeshIndex(i*3+1, 1, num_verts), 1);
+    txtrCoord[2] = getMeshCoord(getMeshIndex(i*3+2, 1, num_verts), 1);
+    return vec2(
+        (txtrCoord[1].x * coords.x) +
+        (txtrCoord[2].x * coords.y) +
+        (txtrCoord[0].x * coords.z),
+        1.0-((txtrCoord[1].y * coords.x) +
+        (txtrCoord[2].y * coords.y) +
+        (txtrCoord[0].y * coords.z))
+    );
+}
+vec3 map_mesh(vec2 coords, vec3 ray, vec3 ph, Triangle tr) {
+    vec4 color = texture(Image[DIF_IMG], coords);
+    vec4 txtrN = texture(Image[N_IMG], coords);
+    vec4 txtrS = texture(Image[SPEC_IMG], coords);
+    vec3 light_pos = light-ray;
+    // vec3 light_pos = vec3(0,0,-2)-ray;
+    vec3 light_dir = normalize(light_pos);
+    vec3 N = 2.0*txtrN.rgb-1.0;
+    float t = 1e30;
+    if(TriangleIntersect(ph, light_dir, t, tr)) {
+        if(dot(N, -light_dir) < 0.0) {
+        } else {
+            color += pow(max(0.0, dot(reflect(-light_dir, N), normalize(light_pos - ph))), 25.0)*txtrS;
+        }
+    }
+    return color.rgb;
+}
+
+void ShapeSetColor(int type, int i, vec3 color) {
+    #if MESH_COUNT != 0
+        if(type == 1) {
+            mesh.color = color;
+            mesh.txtr_id = -1;
+        }
+    #else
+        if(false) {}
+    #endif
+    #if SPHERE_COUNT != 0
+        else if(type == 2) {
+            spheres[i].color = color;
+            spheres[i].txtr_id = -1;
+        }
+    #endif
+    #if PLANE_COUNT != 0
+        else if(type == 3) {
+            planes[i].color = color;
+            planes[i].txtr_id = -1;
+        }
+    #endif
+    #if QUAD_COUNT != 0
+        else if(type == 4) {
+            quads[i].color = color;
+            // quads[i].txtr_id = -1;
+        }
+    #endif
+}
+/******************************************************************************/
+vec3 getDiffuse1(vec3 ph, vec3 ray, vec3 N, vec3 color, float a) {
+    // vec3 nlh = normalize(ph-light-ray);
+    vec3 nlh = normalize(light-ph);     // sorta (not really) works for hollow sphere but not regular sphere
+     nlh = normalize(ph-light);     // sorta (not really) works for hollow sphere but not regular sphere
+    // vec3 nlh = normalize(light-ph-ray);
+    // vec3 nlh = normalize(ph-light-ray);
+    float rt = dot(nlh, N);
+    return rt*color + (1.0-rt)*color*a;
+}
+vec3 getDiffuse(vec3 ph, vec3 ray, vec3 N, vec3 color, float a);
+/******************************************************************************/
+
+bool TriangleIntersect(vec3 ray, vec3 rayDir, inout float tmin, inout Triangle tr)  {
+    vec3 ph, A, fn;
+    float dm, nm, a0, t;
+    {
+        mat3 norm = mat3(
+            tr.V[0]-tr.V[2],
+            tr.V[1]-tr.V[0],
+            tr.V[2]-tr.V[1]
+        );
+        A = cross(norm[0], norm[1]) / 2.0;  // A = (P_i - P_i-1.0f) x (P_i+1.0f - P_i) / 2.0
+        a0 = length(A);
+        fn = normalize(A);
+        nm = dot(fn, tr.V[1] - ray), dm = dot(rayDir, fn);
+        t = nm / dm;
+        ph = ray + rayDir * t;
+    }
+    vec3 A0, A1, A2;
+    {
+        A0 = cross(ph-tr.V[2], tr.V[1]-ph) / 2.0;
+        A1 = cross(ph-tr.V[0], tr.V[2]-ph) / 2.0;
+        A2 = cross(ph-tr.V[1], tr.V[0]-ph) / 2.0;
+    }
+    vec3 stx;
+    {
+        stx.x = dot(fn, A1) / a0;
+        stx.y = dot(fn, A2) / a0;
+        stx.z = dot(fn, A0) / a0;
+    }
+    if((stx.x > 0.0f) && (stx.x < 1.0) && (stx.y > 0.0f) && (stx.y < 1.0) && (stx.z > 0.0f) && (stx.z < 1.0)) {
+        tmin = t;
+        tr.uv = stx;
+        // vec3 ld = normalize(ph-light);
+        // tr.N = -ld+2.0*dot(fn, ld)*fn;
+        // tr.N = reflect(ld, fn);
+        tr.N = fn;
+        return true;
+    }
+    return false;
+}
+bool TriangleIntersect_t(vec3 ray, vec3 rayDir, inout float tmin, inout Triangle tr)  {
+    float t;
+    if(TriangleIntersect(ray, rayDir, t, tr)) {
+        if(t > tmin || t < 0.0) return false;
+        tmin = t;
+        return true;
+    }
+    return false;
+}
+
+#if MESH_COUNT != 0
+    bool MeshIntersect(vec3 ray, vec3 rayDir, inout float tmin, inout Object obj) {
+    float old_tmin = tmin;
+    if(MESH_COUNT > 0) {
+        Triangle tr;
+        for(int i = 0; i < index_count/3; i++) {
+            int num_verts = vertex_count/3;
+            tr.V[0] = getMeshCoord(getMeshIndex(i*3, 0, num_verts), 0);
+            tr.V[1] = getMeshCoord(getMeshIndex(i*3+1, 0, num_verts), 0);
+            tr.V[2] = getMeshCoord(getMeshIndex(i*3+2, 0, num_verts), 0);
+            //-----------------------------------------------------
+            if(TriangleIntersect_t(ray, rayDir, tmin, tr)) {
+                if(mesh.txtr_id != -1) {
+                    vec2 txy =          map_mesh(tr.uv, i);
+                    obj.color =         texture(Image[DIF_IMG], txy).rgb;
+                    // obj.color =         map_mesh(txy, ray, ray+rayDir*t, tr); // would also set normal in this case
+                    obj.uv.xy =         txy;
+                } else {
+                    obj.color =         mesh.color;
+                }
+                obj.txtr_id =       mesh.txtr_id;
+                obj.N =             tr.N;
+                obj.is_fresnel =    mesh.is_fresnel;
+                obj.hollow =        false;
+            }
+        }
+    }
+    return tmin < old_tmin;
+} 
+#endif
+#if SPHERE_COUNT != 0
+    bool SphereIntersect(vec3 ray, vec3 rayDir, inout float tmin, inout Object obj, int idx) {
+        float old_tmin = tmin;
+    	for(int i = 0; i < SPHERE_COUNT; ++i) {
+    	    if(i == idx) continue;
+    	    float b, c;
+    	    if(spheres[i].hollow)
+    		    b = dot(rayDir, spheres[i].pc-ray);
+    	    else
+    	        b = dot(rayDir, ray-spheres[i].pc);
+    	    vec3 pce = ray-spheres[i].pc;
+    		c = dot(pce, pce) - spheres[i].r*spheres[i].r;
+    		float discr = b*b - c;
+    		float delta = sqrt(discr);
+    		if(discr >= 0.0 && ((b <= 0.0) || spheres[i].hollow)) { // hmm. I can get colors to appear inside without this or tmin not made
+    		    float t;
+    		    if(spheres[i].hollow)
+    		        t = b+delta;
+    			else
+    			    t = -b-delta;
+    			float nm = 1.0;
+    			if(t < 0.0) {
+                    nm = -1.0;
+                    t = -b + delta;
+                }
+    			    
+    			if(t < tmin && t > 0.0) {
+    			    vec3 ph = ray+rayDir*t;
+    				if(spheres[i].hollow)
+    				    obj.N =     (spheres[i].pc - ph) / spheres[i].r;
+    				else
+    				    obj.N =     (ph - spheres[i].pc) / spheres[i].r*nm;
+    				// if(spheres[i].hollow)
+    				    // obj.N = -obj.N;
+    				if(spheres[i].txtr_id != -1)
+    				    obj.color = map_sphere(obj.N, spheres[i].txtr_id);
+    				else
+    				    obj.color =     spheres[i].color;
+    				obj.is_fresnel =    spheres[i].is_fresnel;
+    				obj.hollow =        spheres[i].hollow;
+    				obj.txtr_id =       spheres[i].txtr_id;
+    				obj.i =             i;
+    				tmin =              t;
+    			}
+    		}
+    	}
+    	return tmin < old_tmin;
+    }
+#endif
+#if PLANE_COUNT != 0
+    bool PlaneIntersect(vec3 ray, vec3 rayDir, inout float tmin, inout Object obj, int idx) {
+        float old_tmin = tmin;
+        for(int i = 0; i < PLANE_COUNT; ++i) {
+            if(i == idx) continue;
+            vec3 pce;
+            float b, c, nn, t;
+            //----------------------
+            pce =   planes[i].pc - ray;  
+            c =     dot(pce, planes[i].N);
+            nn =    dot(rayDir, planes[i].N);
+            t = c / nn;
+            if(!isnan(t) && t >= 0.0 && t < tmin) { // t comes out positive
+                tmin = t;
+                // if(c < 0.0 && nn < 0.0)             // if negative then flip it.
+                //     obj.N =         -planes[i].N;
+                // else 
+                obj.N =             planes[i].N;
+                obj.is_fresnel =    planes[i].is_fresnel;
+                obj.i = i;
+                obj.txtr_id =       planes[i].txtr_id;
+                if(planes[i].txtr_id != -1)
+                    obj.color = map_plane(planes[i].pc, obj.N, ray+t*rayDir, planes[i].txtr_id);
+                else 
+                    obj.color =   planes[i].color;
+            }
+        }
+        return tmin < old_tmin;
+    }
+#endif
+#if QUAD_COUNT != 0
+    bool QuadraticIntersect(vec3 ray, vec3 rayDir, inout float tmin, inout Object obj, int idx) {
+        
+    float old_tmin = tmin;
+    float MM = 3.0f;
+    for(int i = 0; i < QUAD_COUNT; ++i) {
+        if(i == idx) continue;
+        float A = 0.0, B = 0.0, C = 0.0, bs, cs, t, disc;
+        vec3 pce = ray - quads[i].pc;
+        {
+            bs = MM * (quads[i].a21 * dot(quads[i].n[2], rayDir)/quads[i].s[2]);
+            cs = MM * (quads[i].a21 * (dot(quads[i].n[2], pce)/quads[i].s[2]) + quads[i].a00);
+            for(int j = 0; j < 3; ++j) {
+                float nl = dot(quads[i].n[j], rayDir);
+                A += quads[i].ai2[j] * pow(nl/quads[i].s[j], 2.0);
+                B += quads[i].ai2[j] * pow((2.0*nl*(dot(quads[i].n[j], pce)))/pow(quads[i].s[j], 2.0), 2.0);
+                C += quads[i].ai2[j] * pow(dot(quads[i].n[j], pce)/quads[i].s[j], 2.0);
+            }
+            B += bs;
+            C += cs;
+        }
+        disc = B*B-4.0*A*C;
+        if(A == 0.0) t = (B == 0.0) ? 0.0 : (-C/B);
+        else if(disc >= 0.0) {
+            float ts = sqrt(disc);
+            float a2 = 1.0f/(2.0f*A);
+            vec2 tm = vec2((-B - ts) * a2, (-B + ts) * a2);
+            t = min(tm.x, tm.y);
+            t = (tm.x < 0.0) ? tm.y : tm.x;
+      	}
+      	
+        if(t < tmin && t > 0.0) {
+            vec3 ph = ray + rayDir*t;
+            vec3 N = vec3(0);
+            vec3 ns = MM * ((quads[i].a21/quads[i].s[2]) * quads[i].n[2]);
+            for(int j = 0; j < 3; ++j) {
+                N += (2.0f * quads[i].ai2[j] * (dot(quads[i].n[j], pce)/pow(quads[i].s[j], 2.0f))) * quads[i].n[j];
+            }
+            N += ns;
+            N = normalize(N);
+            if(dot(ray, rayDir) > 0.0) N = -N; 
+            
+            // if(dot(ray, rayDir) > 0.0) N = -N;       
+            tmin = t;
+            obj.N = normalize(N);
+            obj.color = quads[i].color;
+            obj.i = i;
+            obj.is_fresnel = quads[i].is_fresnel;
+        }
+        
+    }
+    return tmin < old_tmin;
+}
+#endif
+bool Intersects(vec3 ray, vec3 rayDir, int type, inout float tmin, inout Object obj, int idx1) {
+    float t_start = tmin;
+    int idx;
+    #if MESH_COUNT != 0
+        if(MeshIntersect(ray, rayDir, t_start, obj))                  { obj.type = 1; }
+    #endif
+    #if SPHERE_COUNT != 0
+        idx = (type != 2) ? -1 : idx1;
+        if(SphereIntersect(ray, rayDir, t_start, obj, idx))           { obj.type = 2; }
+    #endif
+    #if PLANE_COUNT != 0
+        idx = (type != 3) ? -1 : idx1;
+        if(PlaneIntersect(ray, rayDir, t_start, obj, idx))            { obj.type = 3; }
+    #endif
+    #if QUAD_COUNT != 0
+        idx = (type != 4) ? -1 : idx1;
+        if(QuadraticIntersect(ray, rayDir, t_start, obj, idx))        { obj.type = 4; }
+    #endif
+    if(t_start < tmin) {
+        tmin = t_start;
+        obj.ph = ray+tmin*rayDir;
+        #ifdef DIFFUSE
+            // obj.color = getDiffuse1(obj.ph, ray, obj.N, obj.color, 0.7);
+            // obj.color = getDiffuse(obj.ph, ray, obj.N, obj.color, 0.7);
+        #endif
+        return true;
+    }
+    return false;
+    // return (t_start < tmin);
+}
+
+/******************************************************************************/
+
+#define qPlane vec3(0.0, 0.0, 0.0), 1.0, 0.0
+#define qEllipsoid vec3(1.0, 1.0, 1.0), 0.0, -1.0
+#define qCone vec3(1.0, 1.0, -1.0), 0.0, -0.000000
+#define qCylinder vec3(1.0, 1.0, 0.0), 0.0, -1.0
+#define qHypeParab vec3(1.0, -1.0, 0.0), -1.0, 0.0
+Quadratic qset(vec3 pc, vec3 ai2, float a21, float a00) {
+    vec3 scale = vec3(2, 2, 2)*2.0;
+    // scale = scale * 40.0;
+    // scale = vec3(0.5,0.5,0.5);
+    vec3 color = vec3(1,0,0);
+    return Quadratic(ai2, a21, a00,
+        scale,          
+        norm_view,
+        pc, 
+        color,
+        false
+    );
+}
+
+
+/******************************************************************************/
+
+mat3 AreaLightInit(vec3 pe, vec2 hw) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      hw / wh;
+    vec2 xy =       gl_FragCoord.xy / resolution;
+    float d =       1.0;
+   	//======================================================================
+   	vec3 pc =       pe + d * norm_view[2];
+   	vec3 p00 =      pc - (sxy.x * norm_view[0] + sxy.y * norm_view[1]) / 2.0; 
+   	return mat3(p00, norm_view[0]*sxy.x, norm_view[1]*sxy.y);
+}
+vec3 AreaLightCurrent(in mat3 pos_norm, vec2 mn, vec2 MN, vec2 R) {
+    return pos_norm[0] + (mn.x+R.x)/MN.x * pos_norm[1] + (mn.y+R.y)/MN.y * pos_norm[2];
+}
+vec3 AreaLightFull(vec3 pe, vec2 hw, vec2 mn, vec2 MN, vec2 R) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      hw / wh;
+    vec2 xy =       gl_FragCoord.xy / resolution;
+    float d =       1.0;
+   	//======================================================================
+   	vec3 pc =       pe + d * norm_view[2];
+   	vec3 snx =      sxy.x * norm_view[0];
+   	vec3 sny =      sxy.y * norm_view[1];
+   	vec3 p00 =      pc - (snx + sny) / 2.0;
+   	vec3 pl = p00 + (mn.x+R.x)/MN.x * snx + (mn.y+R.y)/MN.y * sny;
+    return pl;
+}
+
+/******************************************************************************/
+// Not sure if any of these are right need to figure it out
+vec3 snells(vec3 L, vec3 N, float eta, inout float F) { // eta = eta.x / eta.y
+	vec3 s2_a = eta * cross(N, cross(-N, L));			
+	float s2_term = 1.0f - (eta * eta) * dot(cross(N, L), cross(N, L));
+	F = s2_term;
+	if(s2_term < 0.0) return (L-2.0*dot(L,N)*N);    // reflect set F to 0
+	vec3 s2_b = N * sqrt(s2_term);
+	vec3 S2 = s2_a - s2_b;									// refracted beam
+    // float O2 = acos(dot(L, -N) / (length(L) * length(-N))); // refracted angle
+	return S2;
+}
+vec3 snells_generic(vec3 L, vec3 N, vec2 eta, inout float F) {
+    float ior = eta.x/eta.y;
+	// some manual normalization from testing
+	float n_length = length(N);
+	float l_length = length(L);
+	if(n_length == l_length) // they should be always equal since they are normalized
+		return snells(L, N, ior, F);
+	vec3 mn = N / n_length;
+	vec3 ml = L / l_length;
+	vec3 s2_a = ior * cross(mn, cross(-1.0f * mn, ml));			
+	float s2_term = 1.0f - (ior * ior) * dot(cross(mn, ml), cross(mn, ml));
+	if(s2_term < 0.0) return (L-2.0*dot(L,N)*N);
+	F = s2_term;
+	vec3 s2_b = mn * sqrt(s2_term);
+	vec3 S2 = s2_a - s2_b;								// refracted beam
+	return S2;
+}
+float schlick_r0(vec2 eta) {
+	return pow((eta.x - eta.y) / (eta.x + eta.y), 2.0);
+}
+float schlick_reflect(vec3 L, vec3 N, vec2 eta) {
+	float r0 = schlick_r0(eta);
+	float cos0 = -dot(N, L);
+	return r0 + (1.0f - r0) * pow(1.0f - cos0, 5.0);
+}
+vec3 fresnel_F(vec3 L, vec3 N, vec2 eta, out bool is_refl) {
+	float C = dot(-L, N);
+	C = smoothstep(0.0, 1.0, C);
+	float ior = eta.x/eta.y;
+	// float term = (C * C - 1.0f) / (ior * ior) + 1.0f;
+	// float term = FP_term(L, N, eta.x, eta.y);
+	float term =  schlick_reflect(-L, N, eta);
+	if(term > 1.0f) {
+	    is_refl = false;
+	 	return (-1.0f/ior)*L + (C/ior - sqrt(term))*N;
+	//    return ior * cross(N, cross(-N, L)) - N * sqrt(term);
+	} else {
+	    is_refl = true;
+		C = -C;
+		return -L + 2.0f*C*N;
+	}
+}
+float FP_term(vec3 L, vec3 N, vec2 eta) {
+	//float c = smoothstep(0.0, 1.0, dot(L, N));
+	// float c = abs(dot(L, N));
+	// float C = acos(c);
+	float C = acos(dot(L, N));
+	//C = -C;
+	// float C = dot(-L, N);
+	//C = abs(C);
+	// C = smoothstep(0.0, PI, C);
+	float l = eta.x * sqrt(abs(1.0f - pow((eta.x / eta.y) * sin(C), 2.0)));
+	float r = eta.y * cos(C);
+	float term = (l-r)/(l+r);
+	return pow(abs(term), 2.0);
+}
+float blend(float t, float T0, float T1) {
+    float T = (t-T0)/(T1-T0);
+    T = clamp(T, 0.0, 1.0);
+    return T;
+}
+
+/******************************************************************************/
+
+vec3 getDiffuse(vec3 ph, vec3 ray, vec3 N, vec3 color, float a) {
+    // vec3 nlh = normalize(ph-light);
+    vec3 nlh = normalize(light-ph);
+    float rt = clamp(dot(nlh, N), 0.0, 1.0);
+    return rt*color + (1.0-rt)*color*a;
+}
+bool is_shadowObj_past_light(vec3 ph_far, vec3 ph_near) {
+    // I believe this will just choose the closer object to the light
+    return (
+        (length(light-ph_far)-length(light-ph_near)) >= 0.0
+    );
+}
+
+bool  ShadowLight2(vec3 ph_far, vec3 ph_near) {
+    // if signs flipped
+    vec3 far = light-ph_far;
+    vec3 near = light-ph_near;
+    return true;
+}
+
+float in_shadow(vec3 ph_far) {
+    vec3 nl = normalize(ph_far - light);
+    float t = dot(ph_far, nl);
+    float tmi = step(-1.0, t);
+    float tma = step(1.0, t);
+    return  float(tmi != 0.0 && tma != 0.0);
+}
+
+// needs smoothstep after
+vec3 add_spec_speckle(Object obj, vec3 color) {
+    vec3 nlh = normalize(light-obj.ph);
+    if(dot(obj.N, -nlh) > 0.0) {
+        return vec3(0);
+        // return color;
+    } else {
+		return pow(max(0.0, dot(reflect(normalize(obj.ph-vec3(light.xy, light.z)), obj.N), nlh)), 25.0)*color;
+    }
+}
+vec3 add_spec_speckle2(Object obj, vec3 color, vec3 ray) {
+    // vec3 light_pos = vec3(0,0,-2)-ray or ph;
+    // if intersects ignoring t
+    // vec3 light_pos = light-ray;
+    vec3 light_pos = light-obj.ph;
+    // vec3 light_pos = light-obj.ph;
+    vec3 nlh = normalize(light_pos);
+    Object near;
+    float t = 1e30;
+    if(Intersects(obj.ph, nlh, -1, t, near, -1)) {
+        if(dot(obj.N, -nlh) < 0.0) {
+            return vec3(0);
+        } else {
+            return pow(max(0.0, dot(reflect(-nlh, obj.N), normalize(light - obj.ph))), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(-nlh, obj.N), normalize(light_pos - obj.ph))), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(normalize(obj.ph-vec3(light.xy, light.z)), obj.N), nlh)), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(normalize(obj.ph-vec3(light.xy, light.z)), obj.N), nlh)), 25.0)*vec3(1);
+        }
+    }
+}
+vec3 add_spec_speckle3(Object obj, vec3 color, vec3 ray) {
+    // vec3 light_pos = vec3(0,0,-2)-ray or ph;
+    // if intersects ignoring t
+    // vec3 light_pos = light-ray;
+    vec3 light_pos = light-ray;
+    // vec3 light_pos = light-obj.ph;
+    vec3 nlh = normalize(light_pos);
+    Object near;
+    float t = 1e30;
+    if(Intersects(obj.ph, nlh, -1, t, near, -1)) {
+        if(dot(obj.N, -nlh) < 0.0) {
+            return vec3(0);
+        } else {
+            return pow(max(0.0, dot(reflect(-nlh, obj.N), normalize(light - obj.ph))), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(-nlh, obj.N), normalize(light_pos - obj.ph))), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(normalize(obj.ph-vec3(light.xy, light.z)), obj.N), nlh)), 25.0)*vec3(1);
+            // return pow(max(0.0, dot(reflect(normalize(obj.ph-vec3(light.xy, light.z)), obj.N), nlh)), 25.0)*vec3(1);
+        }
+    }
+}
+vec3 add_spec_sharp(Object obj, vec3 color) {
+    vec3 nlh = normalize(light-obj.ph);
+    vec3 R = reflect(nlh, obj.N);
+    float s = dot(R, obj.N);
+	if(dot(obj.N, -nlh) < 0.0)
+	    s = 0.0;
+    else
+        s = smoothstep(0.95, 0.96, s);
+    // return vec3(1)*s;
+    return color*s;
+    // return mix(color, max(s*vec3(1), color), 0.8);  // slightly blended color
+}
+vec3 add_spec_soft(Object obj, vec3 color) {
+    vec3 nlh = normalize(light-obj.ph);
+    vec3 R = reflect(nlh, obj.N);
+    float s = dot(R, obj.N);
+	if(dot(obj.N, -nlh) < 0.0)
+	    s = 0.0;
+    else
+        s = smoothstep(0.90, 1.0, s);
+    // return vec3(1)*s;
+    return color*s;
+    // return mix(color, max(s*vec3(1), color), 0.8);  // slightly blended color
+}
+vec3 add_spec_point(Object obj, vec3 color) {
+        vec3 nlh = normalize(light-obj.ph);
+        vec3 R = reflect(nlh, obj.N);
+        float s = dot(R, obj.N);
+    	if(dot(obj.N, -nlh) < 0.0)
+    	    s = 0.0;
+        else
+            s = smoothstep(0.99, 1.0, s);
+        return color*s;
+        // return max(color, s*vec3(1));
+        // return color+vec3(1)*s;
+        // return max(color, s*vec3(1));
+    }
+  
+/******************************************************************************/
+struct Wcw {
+    vec3 wc;
+    float w;
+};
+vec3 env_illum(Object obj, vec3 ph) {
+    int n_rays = ENV_ILLUM_RAYS;
+    vec3 color = vec3(0);
+    for(int i = 0; i < n_rays; ++i) {
+        vec3 R = 2.0*normalize(abs(random3(vec3(i))))-1.0;
+        vec3 ndh = normalize(obj.N+R);
+        Object near;
+        float tmin = 1e30;
+        if(Intersects(ph, ndh, obj.type, tmin, near, obj.i)) {            // always intersection w/sphere
+            if(near.hollow) {
+                // color += near.color;
+                #ifdef DIFFUSE
+                    color += getDiffuse(ph+tmin*ndh, ph, near.N, near.color, 0.7);
+                #else
+                    color += near.color;
+                #endif
+                // color += map_sphere(near.N, near.txtr_id);
+            }
+        } 
+    }
+    return color/float(n_rays);
+}
+vec3 add_caustic(Object near, vec3 ray, vec3 ph) {
+    vec3 color, ray_dir = normalize(near.ph-ph);
+    // float f;
+    float ior = 1.4003/1.31;
+    vec3 refr = (refract(ray_dir, near.N, ior)); // obj.N instead of near.N
+    Object refr_obj;
+    float tmin_d2 = 1e30;
+    if(Intersects(near.ph-light, refr, near.type, tmin_d2, refr_obj, near.i)) {
+        color = refr_obj.color*(near.color); 
+    } else {
+        color = near.color;
+    }
+    return color;
+}
+vec3 add_shadow(Object obj, vec3 ray, vec3 color) {
+    vec3 nlh = normalize(light - obj.ph);
+    float rt = dot(nlh, obj.N);
+    vec3 lightDir =  normalize(obj.ph-light); // light direction
+    
+    Object near;
+    float tmint = 1e30;
+    
+    if(Intersects(obj.ph, -lightDir, obj.type, tmint, near, obj.i)) {
+        vec3 ph2 = obj.ph + tmint*-lightDir;
+        if(dot(lightDir, (ph2-ray)) >= 0.0)  {// is on correct side of light
+            // color = color * 0.8;
+            color = color * rt + 0.8*color*(1.0-rt);
+        }
+    }
+    return color;   
+}
+float get_shadow_coeff(Object obj) {
+    vec3 nlh = normalize(light - obj.ph);       // new direction vector pointing from ph towards the light. ph-->light
+    Object near;
+    float tmin_near = 1e30, rt = 1.0;
+    if(Intersects(obj.ph, nlh, obj.type, tmin_near, near, obj.i)
+        && (tmin_near < length(light-obj.ph))                                   // is in shadow
+        && (dot(nlh, obj.N) > 0.0)                                              // lightdir && normal correct dir
+    ) {
+        rt = dot(nlh, -obj.N);                                                  //  ph-->light.  N<---light  calculate diffuse factor as if we are not in the light.
+        // rt = clamp(dot(nlh, -obj.N), 0.0, 1.0); //  ph-->light.  N<---light  calculate diffuse factor as if we are not in the light.
+        // rt = dot(nlh, -obj.N); // makes it darker
+    }
+    return rt;   
+}
+float get_diffuse_coeff(vec3 ph, vec3 N) {
+    return dot(normalize(light-ph), N);
+    // return clamp(dot(normalize(light-ph), N), 0.0, 1.0);
+}
+
+
+/******************************************************************************/
+
+mat3 getCameraInit(inout vec3 ray, in mat3 transform) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;
+    vec3 pe =       ray * transform;
+    float d =       1.0;
+   	//======================================================================
+   	vec3 pc =       pe + d * norm_view[2];
+   	vec3 snx =      sxy.x * norm_view[0];
+   	vec3 sny =      sxy.y * norm_view[1];
+   	vec3 p00 =      pc - (snx + sny) / 2.0;
+   	return mat3(
+   	    p00, snx, sny
+    );
+   	ray =           pe;
+
+}
+void getCameraCurrent(vec3 ray, out vec3 rayDir, in mat3 pos_norm, in mat3 transform) {
+    // add in R or ij here
+    vec2 xy =       gl_FragCoord.xy / resolution;
+   	vec3 pp =       pos_norm[0] + xy.x * pos_norm[1] + xy.y * pos_norm[2];
+   	vec3 ppe =      (pp - ray) * transform;
+   	vec3 npe =      normalize(ppe);
+   	rayDir =        npe;
+}
+void getCamera(inout vec3 ray, out vec3 rayDir, mat3 transform) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;
+    vec2 xy =       gl_FragCoord.xy / resolution;
+    vec3 pe =       ray * transform;
+    float d =       1.0;
+   	//======================================================================
+   	vec3 pc =       pe + d * norm_view[2];
+   	vec3 snx =      sxy.x * norm_view[0];
+   	vec3 sny =      sxy.y * norm_view[1];
+   	vec3 p00 =      pc - (snx + sny) / 2.0;
+   	vec3 pp =       p00 + xy.x * snx + xy.y * sny;
+   	vec3 ppe =      (pp - pe) * transform;
+   	vec3 npe =      normalize(ppe);
+   	//======================================================================
+   	ray =           pe;
+   	rayDir =        npe;
+}
+
+/******************************************************************************/  
+
+vec3 IntersectAll(vec3 ray, vec3 rayDir, vec3 color) {
+        
+    float t = 1e30;
+    Object obj;
+    if(Intersects(ray, rayDir, -1, t, obj, -1)) {
+        color = obj.color;
+        
+        #ifdef DIFFUSE
+            color = getDiffuse(obj.ph, ray, obj.N, color, 0.7);
+            ShapeSetColor(obj.type, obj.i, color);
+        #endif
+        #ifdef ENV_ILLUM
+            if(obj.hollow == false) {
+                color = env_illum(obj, obj.ph);
+                color = smoothstep(0.0, 1.0, color);
+            }
+        #endif
+        #ifdef SHADOW
+            color = add_shadow(obj, light, color);
+        #endif
+        #ifdef SPECULAR
+            color += add_spec_speckle2(obj, color, ray);
+            color = smoothstep(0.0, 1.0, color);
+        #endif
+            
+    } 
+    return color;
+}
+vec3 IntersectAll_coeff(vec3 ray, vec3 rayDir, vec3 color, inout float rt) {
+    float t = 1e30;
+    Object obj;
+    if(Intersects(ray, rayDir, -1, t, obj, -1)) {
+        color = obj.color;
+        #ifdef DIFFUSE
+            rt = get_diffuse_coeff(obj.ph, obj.N);
+            // ShapeSetColor(obj.type, obj.i, color);
+        #endif
+        #ifdef ENV_ILLUM
+            if(obj.hollow == false) {
+                color = env_illum(obj, obj.ph);
+                color = smoothstep(0.0, 1.0, color);
+                color = getDiffuse(obj.ph, ray, obj.N, color, 0.7);
+            }
+        #endif
+        #ifdef SHADOW
+            rt = min(rt, get_shadow_coeff(obj));
+            // if(rt == 1.0)    rt = rt1;
+        #endif
+        #ifdef SPECULAR
+        {
+            color += add_spec_speckle2(obj, color, ray);
+            color = smoothstep(0.0, 1.0, color);
+        }
+        #endif
+        // rt = clamp(rt, 0.0, 1.0);
+        rt = smoothstep(0.0, 1.0, rt);
+    } else rt = 1.0;
+    return color;
+}
+    
+/******************************************************************************/     
+void InitNormView() {
+    vec3 v_view =       vec3(0.0, 0.0, -1.0);
+    vec3 v_up =         vec3(0.0, 1.0, 0.0);
+   	norm_view[0] =      normalize(cross(v_view, v_up));
+   	norm_view[2] =      normalize(v_view);
+   	norm_view[1] =      normalize(cross(norm_view[0], norm_view[2]));
+}
+void Init_Shapes() {
+    // mesh =  Mesh(vec3(1), false, -1);
+    float s = sin(frame), c = cos(frame);
+    spheres[0] =    Sphere(vec3(0), 0.4, vec3(0.9), -1, false, false);
+    spheres[1] =    Sphere(vec3(-c, 0.4, -s), 0.1, vec3(0,1,0), -1, false, false);
+    spheres[2] =    Sphere(vec3(c, -0.3, s),  0.2, vec3(1,0,0), -1, false, false);
+    
+    // spheres[1] =    Sphere(vec3(0.3, 0.4, 0.71), 0.1, vec3(0,1,0), -1, false, false);
+    // spheres[2] =    Sphere(vec3(-0.3, -0.3, 0.71),  0.2, vec3(1,0,0), -1, false, false);
+    // spheres[3] =    Sphere(vec3(0), 4.1, vec3(1), 1, false, true);
+    
+    
+    float d = 5.0, p = 1.0;
+    planes[0] =     Plane(vec3(0, 0, -d), vec3(0, 0, 1)*p, vec3(0.4,0.8,0.5), false, -1);
+    // planes[1] =     Plane(vec3(0, 0, d), vec3(0, 0, -1)*p, vec3(1,1,1), false, -1);
+    
+}
+void Init_ShapesAreaLight() {
+    // mesh =  Mesh(vec3(1), false, -1);
+    float s = sin(time), c = cos(time);
+    spheres[0] = Sphere(vec3(-c, 0.0, -s-1.0), 0.3, vec3(1,1,0), -1, false, false);
+    spheres[1] = Sphere(vec3(c, 0.0, s-1.0), 0.1, vec3(1,0,0), -1, false, false);
+    spheres[2] = Sphere(vec3(0.0, -0.3, -1.71),  0.2, vec3(1,0,1), -1, false, false);
+    float d = 3.0, p = 1.0;
+    planes[0] =     Plane(vec3(0, -d, 0), vec3(0, 1, 0)*p, vec3(0.4,0.8,0.5), false, -1);
+    // spheres[3] =    Sphere(vec3(0), 4.1, vec3(1), 1, false, true);
+}
+void MakeLightDirectional(vec3 towards) {
+    // light = (towards-light);
+    // light = vec3(0,0,3)*light;
+    // light = vec3(1e30);
+    // light = -normalize(light);
+}
+
+void Init_Light() {
+    float s = sin(time), c = cos(time);
+    light =         vec3(s, 0.1, c);
+    // light = AreaLightFull(vec3(0.1,0.1, -2), vec2(0.5), vec2(1), vec2(0));//vec3 pe, vec2 mn, vec2 MN, vec2 R
+    // light = AreaLightFull(vec3(s,0.1,c), vec2(0.5), vec2(1), vec2(0));
+}
+void Init() {
+    resolution = ImageSize[0].xy;
+    InitNormView();
+    // Init_Light();
+    Init_Shapes();
+    // Init_ShapesAreaLight();
+}
+/******************************************************************************/   
+vec3 AreaLightMain(vec3 color) {
+    vec3 ray = vec3(0, 0, 3), rayDir;
+    getCamera(ray, rayDir, mat3(camera));
+    mat3 al_init = AreaLightInit(vec3(0,0,3), vec2(50, 50));
+    int AA = 10;
+    vec3 C = vec3(0);
+    float rt = 0.0;
+    vec2 r, one_pix = vec2(1.0)/resolution;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            r =         vec2(rand(vec2(i, j)), rand(vec2(j, i)));
+            light =     AreaLightCurrent(al_init, vec2(i, j), vec2(AA), mod(abs(r), one_pix));
+            float rt2 = 1.0;
+            #ifdef ANTIALIAS
+                C += IntersectAll_coeff(ray+mod(vec3(r, rand(r)), vec3(0.01)), rayDir, color, rt2);
+            #else
+                C += IntersectAll_coeff(ray, rayDir, color, rt2);
+            #endif
+            rt += rt2;
+        }
+    }
+    float AA2 = float(AA*AA);
+    rt = rt/AA2;
+    C =  C/AA2;
+    return C*rt + 0.5*C*(1.0-rt);     // problem here is that 
+}
+vec3 NormalMain(vec3 color) {
+    vec3 ray = vec3(0, 0, 3), rayDir;
+    getCamera(ray, rayDir, mat3(camera));
+    return IntersectAll(ray, rayDir, color);
+}
+/******************************************************************************/   
+void main() {
+    Init();
+    vec3 color = vec3(0);
+    FragColor = vec4(AreaLightMain(color), 1);
+    // FragColor = vec4(NormalMain(color), 1);
+    // FragColor = vec4(IntersectAll(ray, rayDir, color), 1);
+  
+}
+
+
+
+#endif
+#ifdef _VERTEX_
+    layout(location = 0) in vec4 position;
+    void main(void) { gl_Position = position; }
+#endif
+
+#ifdef _FRAGMENT_
+layout(location = 0) out vec4 output_img;
+uniform sampler2D   Image[7];
+uniform vec2        ImageSize[7];
+uniform float       time;
+uniform mat4        camera;
+vec2                resolution;
+#define             PI 3.1415926
+void getCamera(inout vec3 ray, inout vec3 rayDir) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;                                            // resolution / scale
+    vec2 xy =       gl_FragCoord.xy / resolution;                                             // gl_FragCoord.xy / wh or resolution;
+    mat3 cam =      mat3(camera);
+
+    vec3 v_view =   vec3(0.0, 0.0, -1.0);
+    vec3 v_up =     vec3(0.0, 1.0, 0.0);
+    vec3 pe =       vec3(0.0, 0.0, 2.9) * cam;
+    float d =       1.0;
+    //==========================================================================
+   	vec3 n0 =       normalize(cross(v_view, v_up));
+   	vec3 n2 =       normalize(v_view);
+   	vec3 n1 =       normalize(cross(n0, n2));
+   	//==========================================================================
+   	vec3 pc =       pe + d * n2;
+   	vec3 p00 =      pc - (sxy.x * n0 + sxy.y * n1) / 2.0;
+   	vec3 pp =       p00 + xy.x * sxy.x * n0 + xy.y * sxy.y * n1;
+   	vec3 ppe =      (pp - pe) * cam;                                                 // position
+   	vec3 npe =      normalize(ppe);
+   	//==========================================================================
+   	ray =           pe;
+   	rayDir =        npe;
+}
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+struct Sphere {
+    vec3 pc, color, normal, hit;
+    float r, norm_multiplier;
+};
+struct Plane {
+    vec3 pc, color, normal, hit;
+};
+struct HollowCube {
+    Plane pbot, pleft, pright, ptop, pback, pfront;
+    vec3 color, normal, hit;
+    int index;
+};
+Sphere sp, sp2;
+HollowCube hc;
+HollowCube hc_set() {
+    HollowCube hc;
+    hc.pbot.pc =        vec3(0.0, -1.0, 0.0);
+    hc.pbot.normal =    vec3(0.0, 1.0, 0.0);
+    hc.pbot.color =     vec3(0.0, 1.0, 0.0);
+
+    hc.pback.pc =       vec3(0.0, 0.0, -3.0);
+    hc.pback.normal =   vec3(0.0, 0.0, 1.0);
+    hc.pback.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pfront.pc =      vec3(0.0, 0.0, 3.0);
+    hc.pfront.normal =  vec3(0.0, 0.0, -1.0);
+    hc.pfront.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.pleft.pc =       vec3(-2.7, 0.0, 0.0);
+    hc.pleft.normal =   vec3(1.0, 0.0, 0.0);
+    hc.pleft.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pright.pc =      vec3(2.7, 0.0, 0.0);
+    hc.pright.normal =  vec3(-1.0, 0.0, 0.0);
+    hc.pright.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.ptop.pc =        vec3(0.0, 2.5, 0.0);
+    hc.ptop.normal =    vec3(0.0, -1.0, 0.0);
+    hc.ptop.color =     vec3(0.0, 1.0, 0.0);
+    hc.index = -1;
+    hc.color = vec3(0);
+    return hc;
+}
+bool SphereRay(vec3 ray, vec3 rayDir, inout float tmin, inout Sphere sp) {
+    vec3 pce;
+    float b, c, delta, thit;
+    pce =   ray - sp.pc;                                                        // pc - pe
+    c =     dot(pce, pce) - sp.r * sp.r;
+    b =     dot(rayDir, pce);
+    delta = b*b - c;
+    bool is_intersect = delta >= 0.0 && b < 0.0;                                //  b < 0.0 as we use pe-pi not pi-pe
+    if(is_intersect) {
+        thit = -b - sqrt(delta);
+        sp.norm_multiplier = 1.0;
+        if(thit < 0.0) {
+            sp.norm_multiplier = -1.0;
+            thit = -b + sqrt(delta);
+        }
+        if(thit < tmin && thit > 0.0) {
+            tmin = thit;
+            sp.hit =                ray + rayDir * tmin;
+            sp.normal =             (sp.hit - sp.pc) / sp.r * sp.norm_multiplier;
+            return true;
+        }
+    }
+    return false;
+}
+bool PlaneRay(vec3 ray, vec3 rayDir, inout float tmin, inout Plane p) {
+    vec3 pce;
+    float b, c, nn, t;
+    pce =   p.pc - ray;
+    c =     dot(pce, p.normal);
+    nn =    dot(rayDir, p.normal);
+    t = c / nn;
+    if(!isnan(t) && t >= 0.0 && t < tmin) { // t comes out positive
+        tmin = t;
+        p.hit = ray + rayDir * tmin;
+        return true;
+    }
+    return false;
+}
+bool HollowCubeRay(vec3 ray, vec3 rayDir, inout float tmin, inout HollowCube h) {
+    int start_index = h.index;
+    if(start_index != 1)
+        if(PlaneRay(ray, rayDir, tmin, h.pbot)) {
+            h.index = 1;
+            h.color = h.pbot.color;
+            h.normal = h.pbot.normal;
+            h.hit = h.pbot.hit;
+        }
+    if(start_index != 2)
+        if(PlaneRay(ray, rayDir, tmin, h.ptop)) {
+            h.index = 2;
+            h.color = h.ptop.color;
+            h.normal = h.ptop.normal;
+            h.hit = h.ptop.hit;
+        }
+    if(start_index != 3)
+        if(PlaneRay(ray, rayDir, tmin, h.pleft)) {
+            h.index = 3;
+            h.color = h.pleft.color;
+            h.normal = h.pleft.normal;
+            h.hit = h.pleft.hit;
+        }
+    if(start_index != 4)
+        if(PlaneRay(ray, rayDir, tmin, h.pright)) {
+            h.index = 4;
+            h.color = h.pright.color;
+            h.normal = h.pright.normal;
+            h.hit = h.pright.hit;
+        }
+    if(start_index != 5)
+        if(PlaneRay(ray, rayDir, tmin, h.pback)) {
+            h.index = 5;
+            h.color = h.pback.color;
+            h.normal = h.pback.normal;
+            h.hit = h.pback.hit;
+        }
+    if(start_index != 6)
+        if(PlaneRay(ray, rayDir, tmin, h.pfront)) {
+            h.index = 6;
+            h.color = h.pfront.color;
+            h.normal = h.pfront.normal;
+            h.hit = h.pfront.hit;
+        }
+    return (h.index != start_index);
+}
+bool is_intersect(vec3 ray, vec3 rayDir, inout float tmin_out, inout int index_out) {
+    float tmin = 1e30;
+    int index = -1;
+    if(index_out != 0)
+        if(SphereRay(ray, rayDir, tmin, sp)) {
+            index = 0;
+        }
+    if(index_out != 1)
+        if(SphereRay(ray, rayDir, tmin, sp2)) {
+        index = 1;
+        }
+    if(index_out != 2) {
+        hc.index = -1;
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    } else {
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    }
+    if(index != -1) {
+        index_out = index;
+        tmin_out = tmin;
+    }
+    return (index != -1);
+}
+vec3 shape_color(int index) {
+    vec3 C = vec3(0);
+    if(index == 0)      C = sp.color;
+    else if(index == 1) C = sp2.color;
+    else if(index == 2) C = hc.color;
+    return C;
+}
+vec3 getNormal(int index) {
+    vec3 N = vec3(0);
+    if(index == 0)          N = sp.normal;
+    else if(index == 1)     N = sp2.normal;
+    else if(index == 2)     N = hc.normal;
+    return N;
+}
+vec3 Calcuate(vec3 ray, vec3 rayDir, vec3 pl, inout float rt) {
+    vec3 C =        vec3(0);
+    float tmin =    1e30;
+    int index =     -1;
+    //---------------------------------------
+    if(is_intersect(ray, rayDir, tmin, index)) {                                // Intersect for camera
+        float tmin_near;
+        vec3 ph, plh, nlh, N;
+        ph =        ray + rayDir * tmin;
+        plh =       pl - ph;
+        nlh =       normalize(plh);
+        C =         shape_color(index);                                         // object color
+        N =         getNormal(index);                                           // object normal
+        rt =        dot(nlh, N);                                                // diffuse coeff
+        tmin_near = 1e30;
+        if(is_intersect(ph, nlh, tmin_near, index)                              // intersect again for light
+            && tmin_near <= length(plh)
+            && dot(nlh, N) > 0.0                                                // that normal & light direction are opposites/not facing same direction
+        )                                                                       // problem. calculates ambient on opposite side. fix?  take min of two.
+            rt = min(rt, dot(nlh, -N));                                         // calculate diffuse again as if light or normal was coming from the other direction (i.e. the direction what causes side away from light to be darker)
+        rt = smoothstep(0.0, 1.0, rt);
+        // C = C*rt + 0.5*C*(1.0-rt);
+    } else
+        rt = 1.0;
+    return C;
+}
+void ShapeInit() {
+    {
+       	sp.r =      0.5;
+       	sp.pc =     vec3(0.0, 0.0, -1.0);
+       	sp.color =  vec3(1.0, 0.0, 0.0);
+    }
+    {
+       	sp2.r =     0.1;
+       	sp2.pc =    vec3(cos(time*3.0), 0, sin(time*3.0)-1.0);
+       	sp2.color = vec3(0.0, 0.0, 1.0);
+    }
+    hc = hc_set();
+}
+
+mat3 norm_view;
+mat3 AreaLightInit(vec3 pe, vec2 hw) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      hw / wh;
+    vec2 xy =       gl_FragCoord.xy / resolution;
+    float d =       1.0;
+   	//======================================================================
+   	vec3 v_view =       vec3(0.0, 0.0, -1.0);
+    vec3 v_up =         vec3(0.0, 1.0, 0.0);
+   	norm_view[0] =      normalize(cross(v_view, v_up));
+   	norm_view[2] =      normalize(v_view);
+   	norm_view[1] =      normalize(cross(norm_view[0], norm_view[2]));
+   	
+   	vec3 pc =       pe + d * norm_view[2];
+   	vec3 p00 =      pc - (sxy.x * norm_view[0] + sxy.y * norm_view[1]) / 2.0; 
+   	return mat3(p00, norm_view[0]*sxy.x, norm_view[1]*sxy.y);
+}
+vec3 AreaLightCurrent(in mat3 pos_norm, vec2 mn, vec2 MN, vec2 R) {
+    return pos_norm[0] + (mn.x+R.x)/MN.x * pos_norm[1] + (mn.y+R.y)/MN.y * pos_norm[2];
+}
+
+vec3 AreaLightMain(vec3 ray, vec3 rayDir, vec3 pl) {
+    mat3 al_init = AreaLightInit(pl, vec2(30, 30));
+    int AA = 10;
+    vec3 C = vec3(0);
+    float rt = 0.0;
+    vec2 r, one_pix = vec2(1.0)/resolution;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            r =         vec2(rand(vec2(i, j)), rand(vec2(j, i)));
+            pl =     AreaLightCurrent(al_init, vec2(i, j), vec2(AA), mod(abs(r), one_pix));
+            float rt2 = 1.0;
+    
+            C += Calcuate(ray+mod(vec3(r, rand(r)), vec3(0.015)), rayDir, pl, rt2);
+            
+            rt += rt2;
+        }
+    }
+    float AA2 = float(AA*AA);
+    rt = rt/AA2;
+    C =  C/AA2;
+    return C*rt + 0.5*C*(1.0-rt);     // problem here is that 
+}
+
+vec3 GetAA(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C = vec3(0);
+    int AA = 5;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            vec3 pl1 = vec3(rand(vec2(i, j)), rand(vec2(j, i)), 0);
+            pl1.z = rand(vec2(pl1.x, pl1.y));
+            pl1 = mod(abs(pl1), 0.015);
+            // C += Calcuate(ray+pl1, rayDir, pl);
+        }
+    }
+    return C/float(AA*AA);
+}
+void main() {
+    resolution = ImageSize[0].xy;
+    ShapeInit();
+    vec3 ray, rayDir;
+    getCamera(ray, rayDir);
+    vec3 pl = vec3(cos(time)-sin(time), 0.0, 2.0);
+    output_img = vec4(AreaLightMain(ray, rayDir, pl), 1);
+	return;
+}
+#endif
+#ifdef _VERTEX_
+layout(location = 0) in vec4 position;
+void main(void) { gl_Position = position; }
+#endif
+#ifdef _FRAGMENT_
+layout(location = 0) out vec4 output_img;
+uniform sampler2D   Image[7];
+uniform vec2        ImageSize[7];
+uniform float       time;
+uniform mat4        camera;
+vec2                resolution;
+#define             PI 3.1415926
+void getCamera(inout vec3 ray, inout vec3 rayDir) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;                                            // resolution / scale
+    vec2 xy =       gl_FragCoord.xy / resolution;                                             // gl_FragCoord.xy / wh or resolution;
+    mat3 cam =      mat3(camera);
+
+    vec3 v_view =   vec3(0.0, 0.0, -1.0);
+    vec3 v_up =     vec3(0.0, 1.0, 0.0);
+    vec3 pe =       vec3(0.0, 0.0, 2.9) * cam;
+    float d =       1.0;
+    //==========================================================================
+   	vec3 n0 =       normalize(cross(v_view, v_up));
+   	vec3 n2 =       normalize(v_view);
+   	vec3 n1 =       normalize(cross(n0, n2));
+   	//==========================================================================
+   	vec3 pc =       pe + d * n2;
+   	vec3 p00 =      pc - (sxy.x * n0 + sxy.y * n1) / 2.0;
+   	vec3 pp =       p00 + xy.x * sxy.x * n0 + xy.y * sxy.y * n1;
+   	vec3 ppe =      (pp - pe) * cam;                                                 // position
+   	vec3 npe =      normalize(ppe);
+   	//==========================================================================
+   	ray =           pe;
+   	rayDir =        npe;
+}
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+struct Sphere {
+    vec3 pc, color, normal, hit;
+    float r, norm_multiplier;
+};
+struct Plane {
+    vec3 pc, color, normal, hit;
+};
+struct HollowCube {
+    Plane pbot, pleft, pright, ptop, pback, pfront;
+    vec3 color, normal, hit;
+    int index;
+};
+Sphere sp, sp2;
+HollowCube hc;
+HollowCube hc_set() {
+    HollowCube hc;
+    hc.pbot.pc =        vec3(0.0, -1.0, 0.0);
+    hc.pbot.normal =    vec3(0.0, 1.0, 0.0);
+    hc.pbot.color =     vec3(0.0, 1.0, 0.0);
+
+    hc.pback.pc =       vec3(0.0, 0.0, -3.0);
+    hc.pback.normal =   vec3(0.0, 0.0, 1.0);
+    hc.pback.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pfront.pc =      vec3(0.0, 0.0, 3.0);
+    hc.pfront.normal =  vec3(0.0, 0.0, -1.0);
+    hc.pfront.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.pleft.pc =       vec3(-2.5, 0.0, 0.0);
+    hc.pleft.normal =   vec3(1.0, 0.0, 0.0);
+    hc.pleft.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pright.pc =      vec3(2.5, 0.0, 0.0);
+    hc.pright.normal =  vec3(-1.0, 0.0, 0.0);
+    hc.pright.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.ptop.pc =        vec3(0.0, 2.5, 0.0);
+    hc.ptop.normal =    vec3(0.0, -1.0, 0.0);
+    hc.ptop.color =     vec3(0.0, 1.0, 0.0);
+    hc.index = -1;
+    hc.color = vec3(0);
+    return hc;
+}
+bool SphereRay(vec3 ray, vec3 rayDir, inout float tmin, inout Sphere sp) {
+    vec3 pce;
+    float b, c, delta, thit;
+    pce =   ray - sp.pc;                                                        // pc - pe
+    c =     dot(pce, pce) - sp.r * sp.r;
+    b =     dot(rayDir, pce);
+    delta = b*b - c;
+    bool is_intersect = delta >= 0.0 && b < 0.0;                                //  b < 0.0 as we use pe-pi not pi-pe
+    if(is_intersect) {
+        thit = -b - sqrt(delta);
+        sp.norm_multiplier = 1.0;
+        if(thit < 0.0) {
+            sp.norm_multiplier = -1.0;
+            thit = -b + sqrt(delta);
+        }
+        if(thit < tmin && thit > 0.0) {
+            tmin = thit;
+            sp.hit =                ray + rayDir * tmin;
+            sp.normal =             (sp.hit - sp.pc) / sp.r * sp.norm_multiplier;
+            return true;
+        }
+    }
+    return false;
+}
+bool PlaneRay(vec3 ray, vec3 rayDir, inout float tmin, inout Plane p) {
+    vec3 pce;
+    float b, c, nn, t;
+    pce =   p.pc - ray;
+    c =     dot(pce, p.normal);
+    nn =    dot(rayDir, p.normal);
+    t = c / nn;
+    if(!isnan(t) && t >= 0.0 && t < tmin) { // t comes out positive
+        tmin = t;
+        p.hit = ray + rayDir * tmin;
+        return true;
+    }
+    return false;
+}
+bool HollowCubeRay(vec3 ray, vec3 rayDir, inout float tmin, inout HollowCube h) {
+    int start_index = h.index;
+    if(start_index != 1)
+        if(PlaneRay(ray, rayDir, tmin, h.pbot)) {
+            h.index = 1;
+            h.color = h.pbot.color;
+            h.normal = h.pbot.normal;
+            h.hit = h.pbot.hit;
+        }
+    if(start_index != 2)
+        if(PlaneRay(ray, rayDir, tmin, h.ptop)) {
+            h.index = 2;
+            h.color = h.ptop.color;
+            h.normal = h.ptop.normal;
+            h.hit = h.ptop.hit;
+        }
+    if(start_index != 3)
+        if(PlaneRay(ray, rayDir, tmin, h.pleft)) {
+            h.index = 3;
+            h.color = h.pleft.color;
+            h.normal = h.pleft.normal;
+            h.hit = h.pleft.hit;
+        }
+    if(start_index != 4)
+        if(PlaneRay(ray, rayDir, tmin, h.pright)) {
+            h.index = 4;
+            h.color = h.pright.color;
+            h.normal = h.pright.normal;
+            h.hit = h.pright.hit;
+        }
+    if(start_index != 5)
+        if(PlaneRay(ray, rayDir, tmin, h.pback)) {
+            h.index = 5;
+            h.color = h.pback.color;
+            h.normal = h.pback.normal;
+            h.hit = h.pback.hit;
+        }
+    if(start_index != 6)
+        if(PlaneRay(ray, rayDir, tmin, h.pfront)) {
+            h.index = 6;
+            h.color = h.pfront.color;
+            h.normal = h.pfront.normal;
+            h.hit = h.pfront.hit;
+        }
+    return (h.index != start_index);
+}
+bool is_intersect(vec3 ray, vec3 rayDir, inout float tmin_out, inout int index_out) {
+    float tmin = 1e30;
+    int index = -1;
+    if(index_out != 0)
+        if(SphereRay(ray, rayDir, tmin, sp)) {
+            index = 0;
+        }
+    if(index_out != 1)
+        if(SphereRay(ray, rayDir, tmin, sp2)) {
+        index = 1;
+        }
+    if(index_out != 2) {
+        hc.index = -1;
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    } else {
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    }
+    if(index != -1) {
+        index_out = index;
+        tmin_out = tmin;
+    }
+    return (index != -1);
+}
+vec3 shape_color(int index) {
+    vec3 C = vec3(0);
+    if(index == 0)      C = sp.color;
+    else if(index == 1) C = sp2.color;
+    else if(index == 2) C = hc.color;
+    return C;
+}
+vec3 getNormal(int index) {
+    vec3 N = vec3(0);
+    if(index == 0)          N = sp.normal;
+    else if(index == 1)     N = sp2.normal;
+    else if(index == 2)     N = hc.normal;
+    return N;
+}
+vec3 Calcuate(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C =        vec3(0);
+    float tmin =    1e30;
+    int index =     -1;
+    //---------------------------------------
+    if(is_intersect(ray, rayDir, tmin, index)) {                                // Intersect for camera
+        float rt, tmin_near;
+        vec3 ph, plh, nlh, N;
+        ph =        ray + rayDir * tmin;
+        plh =       pl - ph;
+        nlh =       normalize(plh);
+        C =         shape_color(index);                                         // object color
+        N =         getNormal(index);                                           // object normal
+        rt =        dot(normalize(pl), N);                                      // diffuse coeff
+        tmin_near = 1e30;
+        if(is_intersect(ph, nlh, tmin_near, index)                              // intersect again for light
+            && tmin_near <= length(plh)
+            && dot(nlh, N) > 0.0                                                // that normal & light direction are opposites/not facing same direction
+        )                                                                       // problem. calculates ambient on opposite side. fix?  take min of two.
+            rt = min(rt, dot(nlh, -N));                                         // calculate diffuse again as if light or normal was coming from the other direction (i.e. the direction what causes side away from light to be darker)
+        rt = smoothstep(0.0, 1.0, rt);
+        C = C*rt + 0.5*C*(1.0-rt);
+    }
+    return C;
+}
+void ShapeInit() {
+    {
+       	sp.r =      0.5;
+       	sp.pc =     vec3(0.0, 0.0, -1.0);
+       	sp.color =  vec3(1.0, 0.0, 0.0);
+    }
+    {
+       	sp2.r =     0.1;
+       	sp2.pc =    vec3(cos(time*3.0), 0, sin(time*3.0)-1.0);
+       	sp2.color = vec3(0.0, 0.0, 1.0);
+    }
+    hc = hc_set();
+}
+vec3 GetAA(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C = vec3(0);
+    int AA = 5;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            vec3 pl1 = vec3(rand(vec2(i, j)), rand(vec2(j, i)), 0);
+            pl1.z = rand(vec2(pl1.x, pl1.y));
+            pl1 = mod(abs(pl1), 0.015);
+            C += Calcuate(ray+pl1, rayDir, pl);
+        }
+    }
+    return C/float(AA*AA);
+}
+void main() {
+    resolution = ImageSize[0].xy;
+    ShapeInit();
+    vec3 ray, rayDir;
+    getCamera(ray, rayDir);
+    vec3 pl = vec3(cos(time)-sin(time), 0.0, 2.0);
+    output_img = vec4(GetAA(ray, rayDir, pl), 1);
+	return;
+}
+#endif
+#ifdef _VERTEX_
+layout(location = 0) in vec4 position;
+void main(void) { gl_Position = position; }
+#endif
+#ifdef _FRAGMENT_
+layout(location = 0) out vec4 output_img;
+uniform sampler2D   Image[7];
+uniform vec2        ImageSize[7];
+uniform float       time;
+uniform mat4        camera;
+vec2                resolution;
+#define             PI 3.1415926
+void getCamera(inout vec3 ray, inout vec3 rayDir) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;                                            // resolution / scale
+    vec2 xy =       gl_FragCoord.xy / resolution;                                             // gl_FragCoord.xy / wh or resolution;
+    mat3 cam =      mat3(camera);
+
+    vec3 v_view =   vec3(0.0, 0.0, -1.0);
+    vec3 v_up =     vec3(0.0, 1.0, 0.0);
+    vec3 pe =       vec3(0.0, 0.0, 2.9) * cam;
+    float d =       1.0;
+    //==========================================================================
+   	vec3 n0 =       normalize(cross(v_view, v_up));
+   	vec3 n2 =       normalize(v_view);
+   	vec3 n1 =       normalize(cross(n0, n2));
+   	//==========================================================================
+   	vec3 pc =       pe + d * n2;
+   	vec3 p00 =      pc - (sxy.x * n0 + sxy.y * n1) / 2.0;
+   	vec3 pp =       p00 + xy.x * sxy.x * n0 + xy.y * sxy.y * n1;
+   	vec3 ppe =      (pp - pe) * cam;                                                 // position
+   	vec3 npe =      normalize(ppe);
+   	//==========================================================================
+   	ray =           pe;
+   	rayDir =        npe;
+}
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+struct Sphere {
+    vec3 pc, color, normal, hit;
+    float r, norm_multiplier;
+};
+struct Plane {
+    vec3 pc, color, normal, hit;
+};
+struct HollowCube {
+    Plane pbot, pleft, pright, ptop, pback, pfront;
+    vec3 color, normal, hit;
+    int index;
+};
+Sphere sp, sp2;
+HollowCube hc;
+HollowCube hc_set() {
+    HollowCube hc;
+    hc.pbot.pc =        vec3(0.0, -1.0, 0.0);
+    hc.pbot.normal =    vec3(0.0, 1.0, 0.0);
+    hc.pbot.color =     vec3(0.0, 1.0, 0.0);
+
+    hc.pback.pc =       vec3(0.0, 0.0, -3.0);
+    hc.pback.normal =   vec3(0.0, 0.0, 1.0);
+    hc.pback.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pfront.pc =      vec3(0.0, 0.0, 3.0);
+    hc.pfront.normal =  vec3(0.0, 0.0, -1.0);
+    hc.pfront.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.pleft.pc =       vec3(-2.5, 0.0, 0.0);
+    hc.pleft.normal =   vec3(1.0, 0.0, 0.0);
+    hc.pleft.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pright.pc =      vec3(2.5, 0.0, 0.0);
+    hc.pright.normal =  vec3(-1.0, 0.0, 0.0);
+    hc.pright.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.ptop.pc =        vec3(0.0, 2.5, 0.0);
+    hc.ptop.normal =    vec3(0.0, -1.0, 0.0);
+    hc.ptop.color =     vec3(0.0, 1.0, 0.0);
+    hc.index = -1;
+    hc.color = vec3(0);
+    return hc;
+}
+bool SphereRay(vec3 ray, vec3 rayDir, inout float tmin, inout Sphere sp) {
+    vec3 pce;
+    float b, c, delta, thit;
+    pce =   ray - sp.pc;                                                        // pc - pe
+    c =     dot(pce, pce) - sp.r * sp.r;
+    b =     dot(rayDir, pce);
+    delta = b*b - c;
+    bool is_intersect = delta >= 0.0 && b < 0.0;                                //  b < 0.0 as we use pe-pi not pi-pe
+    if(is_intersect) {
+        thit = -b - sqrt(delta);
+        sp.norm_multiplier = 1.0;
+        if(thit < 0.0) {
+            sp.norm_multiplier = -1.0;
+            thit = -b + sqrt(delta);
+        }
+        if(thit < tmin && thit > 0.0) {
+            tmin = thit;
+            sp.hit =                ray + rayDir * tmin;
+            sp.normal =             (sp.hit - sp.pc) / sp.r * sp.norm_multiplier;
+            return true;
+        }
+    }
+    return false;
+}
+bool PlaneRay(vec3 ray, vec3 rayDir, inout float tmin, inout Plane p) {
+    vec3 pce;
+    float b, c, nn, t;
+    pce =   p.pc - ray;
+    c =     dot(pce, p.normal);
+    nn =    dot(rayDir, p.normal);
+    t = c / nn;
+    if(!isnan(t) && t >= 0.0 && t < tmin) { // t comes out positive
+        tmin = t;
+        p.hit = ray + rayDir * tmin;
+        return true;
+    }
+    return false;
+}
+bool HollowCubeRay(vec3 ray, vec3 rayDir, inout float tmin, inout HollowCube h) {
+    int start_index = h.index;
+    if(start_index != 1)
+        if(PlaneRay(ray, rayDir, tmin, h.pbot)) {
+            h.index = 1;
+            h.color = h.pbot.color;
+            h.normal = h.pbot.normal;
+            h.hit = h.pbot.hit;
+        }
+    if(start_index != 2)
+        if(PlaneRay(ray, rayDir, tmin, h.ptop)) {
+            h.index = 2;
+            h.color = h.ptop.color;
+            h.normal = h.ptop.normal;
+            h.hit = h.ptop.hit;
+        }
+    if(start_index != 3)
+        if(PlaneRay(ray, rayDir, tmin, h.pleft)) {
+            h.index = 3;
+            h.color = h.pleft.color;
+            h.normal = h.pleft.normal;
+            h.hit = h.pleft.hit;
+        }
+    if(start_index != 4)
+        if(PlaneRay(ray, rayDir, tmin, h.pright)) {
+            h.index = 4;
+            h.color = h.pright.color;
+            h.normal = h.pright.normal;
+            h.hit = h.pright.hit;
+        }
+    if(start_index != 5)
+        if(PlaneRay(ray, rayDir, tmin, h.pback)) {
+            h.index = 5;
+            h.color = h.pback.color;
+            h.normal = h.pback.normal;
+            h.hit = h.pback.hit;
+        }
+    if(start_index != 6)
+        if(PlaneRay(ray, rayDir, tmin, h.pfront)) {
+            h.index = 6;
+            h.color = h.pfront.color;
+            h.normal = h.pfront.normal;
+            h.hit = h.pfront.hit;
+        }
+    return (h.index != start_index);
+}
+bool is_intersect(vec3 ray, vec3 rayDir, inout float tmin_out, inout int index_out) {
+    float tmin = 1e30;
+    int index = -1;
+    if(index_out != 0)
+        if(SphereRay(ray, rayDir, tmin, sp)) {
+            index = 0;
+        }
+    if(index_out != 1)
+        if(SphereRay(ray, rayDir, tmin, sp2)) {
+        index = 1;
+        }
+    if(index_out != 2) {
+        hc.index = -1;
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    } else {
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    }
+    if(index != -1) {
+        index_out = index;
+        tmin_out = tmin;
+    }
+    return (index != -1);
+}
+vec3 shape_color(int index) {
+    vec3 C = vec3(0);
+    if(index == 0)      C = sp.color;
+    else if(index == 1) C = sp2.color;
+    else if(index == 2) C = hc.color;
+    return C;
+}
+vec3 getNormal(int index) {
+    vec3 N = vec3(0);
+    if(index == 0)          N = sp.normal;
+    else if(index == 1)     N = sp2.normal;
+    else if(index == 2)     N = hc.normal;
+    return N;
+}
+vec3 Calcuate(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C =        vec3(0);
+    float tmin =    1e30;
+    int index =     -1;
+    //---------------------------------------
+    if(is_intersect(ray, rayDir, tmin, index)) {                                // Intersect for camera
+        float rt, tmin_near;
+        vec3 ph, plh, nlh, N;
+        ph =        ray + rayDir * tmin;
+        plh =       pl - ph;
+        nlh =       normalize(plh);
+        C =         shape_color(index);                                         // object color
+        N =         getNormal(index);                                           // object normal
+        rt =        dot(nlh, N);                                                // diffuse coeff
+        tmin_near = 1e30;
+        if(is_intersect(ph, nlh, tmin_near, index)                              // intersect again for light
+            && tmin_near <= length(plh)
+            && dot(nlh, N) > 0.0                                                // that normal & light direction are opposites/not facing same direction
+        )                                                                       // problem. calculates ambient on opposite side. fix?  take min of two.
+            rt = min(rt, dot(nlh, -N));                                         // calculate diffuse again as if light or normal was coming from the other direction (i.e. the direction what causes side away from light to be darker)
+        rt = smoothstep(0.0, 1.0, rt);
+        C = C*rt + 0.5*C*(1.0-rt);
+    }
+    return C;
+}
+void ShapeInit() {
+    {
+       	sp.r =      0.5;
+       	sp.pc =     vec3(0.0, 0.0, -1.0);
+       	sp.color =  vec3(1.0, 0.0, 0.0);
+    }
+    {
+       	sp2.r =     0.1;
+       	sp2.pc =    vec3(cos(time*3.0), 0, sin(time*3.0)-1.0);
+       	sp2.color = vec3(0.0, 0.0, 1.0);
+    }
+    hc = hc_set();
+}
+vec3 GetAA(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C = vec3(0);
+    int AA = 5;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            vec3 pl1 = vec3(rand(vec2(i, j)), rand(vec2(j, i)), 0);
+            pl1.z = rand(vec2(pl1.x, pl1.y));
+            pl1 = mod(abs(pl1), 0.015);
+            C += Calcuate(ray+pl1, rayDir, pl);
+        }
+    }
+    return C/float(AA*AA);
+}
+void main() {
+    resolution = ImageSize[0].xy;
+    ShapeInit();
+    vec3 ray, rayDir;
+    getCamera(ray, rayDir);
+    // cos(time)-sin(time)
+    vec3 pl = vec3(cos(time)-sin(time), 0.0, 2.0);
+    output_img = vec4(GetAA(ray, rayDir, pl), 1);
+	return;
+}
+#endif
+#ifdef _VERTEX_
+layout(location = 0) in vec4 position;
+void main(void) { gl_Position = position; }
+#endif
+#ifdef _FRAGMENT_
+layout(location = 0) out vec4 output_img;
+uniform sampler2D   Image[7];
+uniform vec2        ImageSize[7];
+uniform float       time;
+uniform mat4        camera;
+vec2                resolution;
+#define             PI 3.1415926
+void getCamera(inout vec3 ray, inout vec3 rayDir) {
+    float wh =      min(resolution.x, resolution.y);
+    vec2 sxy =      resolution / wh;                                            // resolution / scale
+    vec2 xy =       gl_FragCoord.xy / resolution;                                             // gl_FragCoord.xy / wh or resolution;
+    mat3 cam =      mat3(camera);
+
+    vec3 v_view =   vec3(0.0, 0.0, -1.0);
+    vec3 v_up =     vec3(0.0, 1.0, 0.0);
+    vec3 pe =       vec3(0.0, 0.0, 2.9) * cam;
+    float d =       1.0;
+    //==========================================================================
+   	vec3 n0 =       normalize(cross(v_view, v_up));
+   	vec3 n2 =       normalize(v_view);
+   	vec3 n1 =       normalize(cross(n0, n2));
+   	//==========================================================================
+   	vec3 pc =       pe + d * n2;
+   	vec3 p00 =      pc - (sxy.x * n0 + sxy.y * n1) / 2.0;
+   	vec3 pp =       p00 + xy.x * sxy.x * n0 + xy.y * sxy.y * n1;
+   	vec3 ppe =      (pp - pe) * cam;                                                 // position
+   	vec3 npe =      normalize(ppe);
+   	//==========================================================================
+   	ray =           pe;
+   	rayDir =        npe;
+}
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+struct Sphere {
+    vec3 pc, color, normal, hit;
+    float r, norm_multiplier;
+};
+struct Plane {
+    vec3 pc, color, normal, hit;
+};
+struct HollowCube {
+    Plane pbot, pleft, pright, ptop, pback, pfront;
+    vec3 color, normal, hit;
+    int index;
+};
+Sphere sp, sp2;
+HollowCube hc;
+HollowCube hc_set() {
+    HollowCube hc;
+    hc.pbot.pc =        vec3(0.0, -1.0, 0.0);
+    hc.pbot.normal =    vec3(0.0, 1.0, 0.0);
+    hc.pbot.color =     vec3(0.0, 1.0, 0.0);
+
+    hc.pback.pc =       vec3(0.0, 0.0, -3.0);
+    hc.pback.normal =   vec3(0.0, 0.0, 1.0);
+    hc.pback.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pfront.pc =      vec3(0.0, 0.0, 3.0);
+    hc.pfront.normal =  vec3(0.0, 0.0, -1.0);
+    hc.pfront.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.pleft.pc =       vec3(-2.5, 0.0, 0.0);
+    hc.pleft.normal =   vec3(1.0, 0.0, 0.0);
+    hc.pleft.color =    vec3(1.0, 1.0, 0.0);
+
+    hc.pright.pc =      vec3(2.5, 0.0, 0.0);
+    hc.pright.normal =  vec3(-1.0, 0.0, 0.0);
+    hc.pright.color =   vec3(1.0, 1.0, 0.0);
+
+    hc.ptop.pc =        vec3(0.0, 2.5, 0.0);
+    hc.ptop.normal =    vec3(0.0, -1.0, 0.0);
+    hc.ptop.color =     vec3(0.0, 1.0, 0.0);
+    hc.index = -1;
+    hc.color = vec3(0);
+    return hc;
+}
+bool SphereRay(vec3 ray, vec3 rayDir, inout float tmin, inout Sphere sp) {
+    vec3 pce;
+    float b, c, delta, thit;
+    pce =   ray - sp.pc;                                                        // pc - pe
+    c =     dot(pce, pce) - sp.r * sp.r;
+    b =     dot(rayDir, pce);
+    delta = b*b - c;
+    bool is_intersect = delta >= 0.0 && b < 0.0;                                //  b < 0.0 as we use pe-pi not pi-pe
+    if(is_intersect) {
+        thit = -b - sqrt(delta);
+        sp.norm_multiplier = 1.0;
+        if(thit < 0.0) {
+            sp.norm_multiplier = -1.0;
+            thit = -b + sqrt(delta);
+        }
+        if(thit < tmin && thit > 0.0) {
+            tmin = thit;
+            sp.hit =                ray + rayDir * tmin;
+            sp.normal =             (sp.hit - sp.pc) / sp.r * sp.norm_multiplier;
+            return true;
+        }
+    }
+    return false;
+}
+bool PlaneRay(vec3 ray, vec3 rayDir, inout float tmin, inout Plane p) {
+    vec3 pce;
+    float b, c, nn, t;
+    pce =   p.pc - ray;
+    c =     dot(pce, p.normal);
+    nn =    dot(rayDir, p.normal);
+    t = c / nn;
+    if(!isnan(t) && t >= 0.0 && t < tmin) { // t comes out positive
+        tmin = t;
+        p.hit = ray + rayDir * tmin;
+        return true;
+    }
+    return false;
+}
+bool HollowCubeRay(vec3 ray, vec3 rayDir, inout float tmin, inout HollowCube h) {
+    int start_index = h.index;
+    if(start_index != 1)
+        if(PlaneRay(ray, rayDir, tmin, h.pbot)) {
+            h.index = 1;
+            h.color = h.pbot.color;
+            h.normal = h.pbot.normal;
+            h.hit = h.pbot.hit;
+        }
+    if(start_index != 2)
+        if(PlaneRay(ray, rayDir, tmin, h.ptop)) {
+            h.index = 2;
+            h.color = h.ptop.color;
+            h.normal = h.ptop.normal;
+            h.hit = h.ptop.hit;
+        }
+    if(start_index != 3)
+        if(PlaneRay(ray, rayDir, tmin, h.pleft)) {
+            h.index = 3;
+            h.color = h.pleft.color;
+            h.normal = h.pleft.normal;
+            h.hit = h.pleft.hit;
+        }
+    if(start_index != 4)
+        if(PlaneRay(ray, rayDir, tmin, h.pright)) {
+            h.index = 4;
+            h.color = h.pright.color;
+            h.normal = h.pright.normal;
+            h.hit = h.pright.hit;
+        }
+    if(start_index != 5)
+        if(PlaneRay(ray, rayDir, tmin, h.pback)) {
+            h.index = 5;
+            h.color = h.pback.color;
+            h.normal = h.pback.normal;
+            h.hit = h.pback.hit;
+        }
+    if(start_index != 6)
+        if(PlaneRay(ray, rayDir, tmin, h.pfront)) {
+            h.index = 6;
+            h.color = h.pfront.color;
+            h.normal = h.pfront.normal;
+            h.hit = h.pfront.hit;
+        }
+    return (h.index != start_index);
+}
+bool is_intersect(vec3 ray, vec3 rayDir, inout float tmin_out, inout int index_out) {
+    float tmin = 1e30;
+    int index = -1;
+    if(index_out != 0)
+        if(SphereRay(ray, rayDir, tmin, sp)) {
+            index = 0;
+        }
+    if(index_out != 1)
+        if(SphereRay(ray, rayDir, tmin, sp2)) {
+        index = 1;
+        }
+    if(index_out != 2) {
+        hc.index = -1;
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    } else {
+        if(HollowCubeRay(ray, rayDir, tmin, hc)) {
+            index = 2;
+        }
+    }
+    if(index != -1) {
+        index_out = index;
+        tmin_out = tmin;
+    }
+    return (index != -1);
+}
+vec3 shape_color(int index) {
+    vec3 C = vec3(0);
+    if(index == 0)      C = sp.color;
+    else if(index == 1) C = sp2.color;
+    else if(index == 2) C = hc.color;
+    return C;
+}
+vec3 getNormal(int index) {
+    vec3 N = vec3(0);
+    if(index == 0)          N = sp.normal;
+    else if(index == 1)     N = sp2.normal;
+    else if(index == 2)     N = hc.normal;
+    return N;
+}
+vec3 Calcuate(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C =        vec3(0);
+    float tmin =    1e30;
+    int index =     -1;
+    //---------------------------------------
+    if(is_intersect(ray, rayDir, tmin, index)) {                                // Intersect for camera
+        float rt, tmin_near;
+        vec3 ph, plh, nlh, N;
+        ph =        ray + rayDir * tmin;
+        plh =       pl - ph;
+        nlh =       normalize(plh);
+        C =         shape_color(index);                                         // object color
+        N =         getNormal(index);                                           // object normal
+        rt =        dot(nlh, N);                                                // diffuse coeff
+        tmin_near = 1e30;
+        if(is_intersect(ph, nlh, tmin_near, index)                              // intersect again for light
+            && tmin_near <= length(plh)
+            && dot(nlh, N) > 0.0                                                // that normal & light direction are opposites/not facing same direction
+            || dot(-normalize(pl), nlh) >= cos(2.73)                            // if outside the cone add shadow
+        )                                                                       // problem. calculates ambient on opposite side. fix?  take min of two.
+            rt = min(rt, dot(nlh, -N));                                         // calculate diffuse again as if light or normal was coming from the other direction (i.e. the direction what causes side away from light to be darker)
+        rt = smoothstep(0.0, 1.0, rt);
+        // rt = clamp(rt, 0.0, 1.0);
+        C = C*rt + 0.5*C*(1.0-rt);
+    }
+    return C;
+}
+void ShapeInit() {
+    {
+       	sp.r =      0.5;
+       	sp.pc =     vec3(0.0, 0.0, -1.0);
+       	sp.color =  vec3(1.0, 0.0, 0.0);
+    }
+    {
+       	sp2.r =     0.1;
+       	sp2.pc =    vec3(cos(time*3.0), 0, sin(time*3.0)-1.0);
+       	sp2.color = vec3(0.0, 0.0, 1.0);
+    }
+    hc = hc_set();
+}
+vec3 GetAA(vec3 ray, vec3 rayDir, vec3 pl) {
+    vec3 C = vec3(0);
+    int AA = 5;
+    for(int i = 0; i < AA; ++i) {
+        for(int j = 0; j < AA; ++j) {
+            vec3 pl1 = vec3(rand(vec2(i, j)), rand(vec2(j, i)), 0);
+            pl1.z = rand(vec2(pl1.x, pl1.y));
+            pl1 = mod(abs(pl1), 0.015);
+            C += Calcuate(ray+pl1, rayDir, pl);
+        }
+    }
+    return C/float(AA*AA);
+}
+void main() {
+    resolution = ImageSize[0].xy;
+    ShapeInit();
+    vec3 ray, rayDir;
+    getCamera(ray, rayDir);
+    vec3 pl = vec3(cos(time)-sin(time), 0.0, 2.0);
+    output_img = vec4(GetAA(ray, rayDir, pl), 1);
+	return;
+}
+#endif
+#ifdef _VERTEX_
+layout(location = 0) in vec4 position;
+void main(void) { gl_Position = position; }
+#endif

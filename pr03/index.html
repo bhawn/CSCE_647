@@ -1,0 +1,197 @@
+<!doctypehtml>
+<html>
+
+<head>
+    <meta charset=utf-8>
+    <title>PR03</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body id=preview>
+    
+    <!--------------------------- Start Title --------------------------------->
+    
+    <center>
+        <h3 class=code-line data-line-end=2 data-line-start=1><a id=Project_09_1></a>PR03</h3>
+        <h5 class=code-line data-line-end=3 data-line-start=2><a id=Ben_Hawn_2></a>Ben Hawn</h5><br>
+	</center>
+	
+	<!---------------------------- Page Index --------------------------------->
+	
+	<center>
+
+    	<!-- Course host -->
+    	|&nbsp; 
+    	<a href="https://bhawn.github.io/CSCE_647">[Index]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr01">[PR01]</a>&nbsp;|&nbsp; 
+    	<a href="https://bhawn.github.io/CSCE_647/pr02">[PR02]</a>&nbsp;|&nbsp; 
+    	[PR03]&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr04">[PR04]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr05">[PR05]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr06">[PR06]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr07">[PR07]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr08">[PR08]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr09">[PR09]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr10">[PR10]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr11">[PR11]</a>&nbsp;|&nbsp;
+    	<a href="https://bhawn.github.io/CSCE_647/pr12">[PR12]</a>&nbsp;|
+    	
+    	
+	</center>
+	
+	
+	<!---------------------------- Web Demo Title ----------------------------->
+	
+    <hr width=100%>
+        <h3 align=center style=padding-top:0>Web Demo</h3>
+    <hr width=100%><br>
+    
+    <!------------------- Emscripten WebDemo loader --------------------------->
+    
+    <figure id=spinner style=overflow:visible><div class=spinner></div>
+        <center style=margin-top:.5em><strong>
+            Project 03
+        </strong></center>
+    </figure>
+    <div class=emscripten id=status>Downloading...</div>
+    <div class=emscripten><progress hidden id=progress max=100 value=0></progress></div>
+    <canvas class=emscripten id=canvas oncontextmenu=event.preventDefault() tabindex=-1></canvas>
+    <div class=emscripten>
+
+        
+        <!---------------------- Emscripten Loader -------------------->
+        <!--
+            Calling stub because of sigaction is expected behavior. 
+            SDL_Init makes calls to sigaction. With ASSERTIONS=1 emscripten will 
+            warn because signal as not supported. 
+        -->
+        
+        <!--Not really needed but left.-->
+        <textarea class=emscripten id=output rows=0 style="display: none!important;"></textarea>
+        <script>
+            var statusElement = document.getElementById("status"),
+                progressElement = document.getElementById("progress"),
+                spinnerElement = document.getElementById("spinner"),
+                Module = {
+                    preRun: [],
+                    postRun: [],
+                    // No longer used. removed printbox
+                    
+                    print: function() {
+                        
+                        var e = document.getElementById("output");
+                        return e && (e.value = ""),
+                        function(t) { 
+                            arguments.length > 1 && (t = Array.prototype.slice.call(arguments).join(" ")), 
+                            console.log(t), 
+                            e && (e.value += t + "\n", e.scrollTop = e.scrollHeight) 
+                        }
+                    }(),
+                    printErr: function(e) { 
+                        arguments.length > 1 && (e = Array.prototype.slice.call(arguments).join(" ")), 
+                        console.error(e) 
+                    },
+                    canvas: function() { 
+                        var e = document.getElementById("canvas"); 
+                        return e.addEventListener("webglcontextlost", (function(e) { 
+                            alert("WebGL context lost. You will need to reload the page."), 
+                            e.preventDefault() 
+                        }), !1), 
+                        e 
+                    }(),
+                    setStatus: function(e) {
+                        if (Module.setStatus.last || (Module.setStatus.last = { time: Date.now(), text: "" }), e !== Module.setStatus.last.text) {
+                            var t = e.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/),
+                            n = Date.now();
+                            t && n - Module.setStatus.last.time < 30 || (Module.setStatus.last.time = n, Module.setStatus.last.text = e, t ? (e = t[1], progressElement.value = 100 * parseInt(t[2]), progressElement.max = 100 * parseInt(t[4]), progressElement.hidden = !1, spinnerElement.hidden = !1) : (progressElement.value = null, progressElement.max = null, progressElement.hidden = !0, e || (spinnerElement.hidden = !0)), statusElement.innerHTML = e)
+                        }
+                    },
+                    totalDependencies: 0,
+                    monitorRunDependencies: function(e) { 
+                        this.totalDependencies = Math.max(this.totalDependencies, e), 
+                        Module.setStatus(e ? "Preparing... (" + (this.totalDependencies - e) + "/" + this.totalDependencies + ")" : "All downloads complete.") 
+                    }
+                };
+                
+            Module.setStatus("Downloading..."), 
+            
+            window.onerror = function() { 
+                Module.setStatus("Exception thrown. Check JS Console.\nYou may need to reload the page."), 
+                spinnerElement.style.display = "none", 
+                Module.setStatus = function(e) { e && Module.printErr("[post-exception status] " + e) }
+            }
+        </script>
+        
+        <script async src=index.js></script>
+        
+        <ul><li>
+        <p>I did not manage to get reflection with refraction working correctly. I will have the correct version of fresnel up soon.</p>
+        </li></ul>
+		
+    </div>
+    
+    
+    <!---------------------------- Start Pictures ----------------------------->
+    <!--------------------- Section Title --------------------->
+    
+    <br><hr>
+    <h5 align=center style=padding-bottom:1rem>Pictures</h5>
+    <hr><br>
+    
+    <!-------------- Pictures ------------>
+    
+	<!--<td><img alt="" src="" width=300px></td>-->
+	<!--<p>Img_1</p>-->
+	<!--<td><img alt="" src="" width=300px></td>-->
+	<!--<p>Img_2</p>-->
+	
+    <table align=center>
+        <tbody>
+            <tr align=center>
+                <td><img alt="" src="temp.gif" style="height:300px"></td>
+              
+            </tr>
+            <tr align=center>
+                <td><p>
+                    Refraction
+                </p></td>
+               
+            </tr>
+        </tbody>
+		
+		
+    </table>
+     <table align=center>
+        <tbody>
+            <tr align=center>
+                <td><img alt="" src="fres.gif" style="height:300px"></td>
+                <td><img alt="" src="fres2.gif" style="height:300px"></td>
+                <td><img alt="" src="fres3.gif" style="height:300px"></td>
+                <td><img alt="" src="fres4.gif" style="height:300px"></td>
+            </tr>
+
+        </tbody>
+		
+		
+    </table>  
+	
+	       <tbody>
+            <tr align=center>
+               <td><p>
+                   Fresnel Variations. I swap background image and foreground image through out them
+                </p></td>
+            </tr>
+
+        </tbody>
+		
+		
+    </table>  
+
+        
+    <hr width=100%><br>
+    <hr width=100%>
+    
+    
+</body>
+
+</html>
